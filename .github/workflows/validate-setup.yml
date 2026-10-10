@@ -22,7 +22,7 @@ jobs:
       - name: Install pinned controller test dependencies
         run: python -m pip install -r requirements-dev.txt
       - name: Controller, API, report and recovery tests (no Docker, live faults or model credentials)
-        run: python -m pytest -q --junitxml=test-results/junit.xml
+        run: python -m pytest -q tests --junitxml=test-results/junit.xml
       - name: Publish test results
         if: always()
         uses: actions/upload-artifact@v4
