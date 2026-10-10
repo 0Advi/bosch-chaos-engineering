@@ -402,7 +402,13 @@ Dependencies: P2–P5 and source builds. P6-01 can start once P2 yields evidence
 
 ### P7 — Reproducible GitHub delivery and demo
 
-- [ ] **P7-01 — Package setup and runtime configuration.** Owner M5; reviewer M1.
+Integration update (10 October 2026): P0–P4 branches are combined with P5/P6;
+connected UI actions use P3. Packaging/CI/offline evaluation and simulated demo
+are provided. **P7-02 live acceptance remains open**, as do measured P5/P6
+acceptance criteria. See [release status and remaining tasks](docs/release-and-demo.md).
+Preparation and fake tests do not close runtime acceptance checkboxes.
+
+- [x] **P7-01 — Package setup and runtime configuration.** Owner M5; reviewer M1.
   Add pinned dependencies, example configuration without secrets, controller/UI
   startup instructions and commands for tests/evaluations. Update README,
   Makefile, workflow validation and implementation status. Document machine
@@ -415,7 +421,7 @@ Dependencies: P2–P5 and source builds. P6-01 can start once P2 yields evidence
   checkout, fault, diagnosis, verified restoration, reviewed fix and replay.
   **Done when:** the demo and report agree with actual measurements.
 
-- [ ] **P7-03 — Review, merge and push completed work.** Owner M5; reviewer is the
+- [x] **P7-03 — Review, merge and push completed work.** Owner M5; reviewer is the
   relevant domain owner. Use small task-focused branches/PRs and required CI.
   Preserve upstream license notices; exclude credentials, local databases and
   unsanitized evidence. Mark tasks complete only after their acceptance evidence.

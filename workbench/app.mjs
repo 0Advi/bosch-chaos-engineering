@@ -93,7 +93,7 @@ function planView() {
         ["Watchdog", state.readiness?.watchdog_ready ? "Ready" : "Not ready"],
         ["Source", state.mode],
       ],
-    )}<h2>Scope and recovery</h2><div id="scope"></div></aside></div>`;
+    )}<div class="actions">${button("baseline", "Capture healthy baseline", state.mode !== "controller" || state.busy || state.history.some(r => !["RECOVERED", "ABORTED", "FAILED"].includes(r.state)))}</div><p class="muted">${esc(state.readiness?.baseline_job?.state || "No baseline capture running")}</p><h2>Scope and recovery</h2><div id="scope"></div></aside></div>`;
   function scope() {
     const c = capability();
     document.querySelector("#parameters").innerHTML = (c?.parameters || [])
@@ -174,9 +174,17 @@ function planView() {
       ).length
     )
       return;
-    await mutate("run-" + state.plan.plan_id, "/runs", { plan: state.plan });
+    const result = await mutate("run-" + state.plan.plan_id, "/runs", { plan: state.plan });
+    if (!result?.run_id) return;
+    state.selected = result.run_id;
+    state.events = [];
+    sessionStorage.setItem("workbench-run", result.run_id);
     await refresh();
     location.hash = "run";
+  };
+  document.querySelector("#baseline").onclick = async () => {
+    await mutate("baseline", "/baselines", {});
+    await refresh();
   };
   scope();
 }
@@ -212,7 +220,14 @@ function runView() {
                 ["Next action", state.diagnosis.next_action],
               ])
             : "<p>No diagnosis available.</p>"
-        }<h2>Saved references</h2><ul>${run.evidence_refs.map((r) => `<li>${esc(r)}</li>`).join("") || "<li>No saved evidence</li>"}</ul></aside></div>`);
+        }<div class="actions">${button("diagnose", "Diagnose with rules", state.mode !== "controller" || state.busy || !run.terminal)}${button("prepare-patch", "Prepare candidate fix", state.mode !== "controller" || state.busy || !run.terminal)}</div><p class="muted">Candidate fixes require review and application tests. Diagnosis uses observed evidence and can report uncertainty.</p><h2>Saved references</h2><ul>${run.evidence_refs.map((r) => `<li>${r.startsWith("/api/v1/") ? `<a href="${esc(r)}" target="_blank" rel="noopener">${esc(r)}</a>` : esc(r)}</li>`).join("") || "<li>No saved evidence</li>"}</ul></aside></div>`);
+  for (const [id, action] of [["diagnose", "diagnosis"], ["prepare-patch", "patch"]]) {
+    document.querySelector("#" + id)?.addEventListener("click", async () => {
+      await mutate(action + "-" + run.run_id, `/runs/${encodeURIComponent(run.run_id)}/${action}`, {});
+      await refresh();
+      if (action === "patch" && state.review) location.hash = "patch";
+    });
+  }
   document.querySelector("#abort")?.addEventListener("click", async () => {
     await mutate(
       "abort-" + run.run_id,
@@ -342,7 +357,7 @@ async function perform(fn) {
   if (state.busy) return;
   state.busy = true;
   try {
-    await fn();
+    return await fn();
     note("");
   } catch (e) {
     note(e.message);
@@ -356,9 +371,10 @@ async function mutate(key, path, body) {
     note("Fixture actions cannot mutate the application.");
     return;
   }
-  await perform(async () => {
-    await api.call(path, body, actionKey(key));
+  return await perform(async () => {
+    const result = await api.call(path, body, actionKey(key));
     sessionStorage.removeItem("workbench-key-" + key);
+    return result;
   });
 }
 async function refresh() {
@@ -369,7 +385,9 @@ async function refresh() {
     state.capabilities = snapshot.capabilities;
     state.history = snapshot.history;
     state.stale = false;
-    const id = state.selected || state.history[0]?.run_id;
+    const id = state.history.some(r => r.run_id === state.selected) ? state.selected : state.history[0]?.run_id;
+    if (id !== state.selected) state.events = [];
+    if (!id) { state.selected = null; state.run = null; state.events = []; state.observations = []; state.diagnosis = null; state.review = null; state.comparison = null; }
     if (id) {
       state.selected = id;
       sessionStorage.setItem("workbench-run", id);

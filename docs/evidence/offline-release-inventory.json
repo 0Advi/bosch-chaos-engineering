@@ -1,0 +1,28 @@
+{
+  "kind": "offline_release_inventory",
+  "upstream_revision": "dedc0178918e260823323b8d95005a8cb924b007",
+  "catalog_capabilities": 8,
+  "source_components": [
+    "controller",
+    "workbench",
+    "improvements",
+    "evals",
+    "schemas",
+    "deploy"
+  ],
+  "flag_sha256": "20a4c5d54e4c274f4c569e815294a2188b2ecc46878a5a2cc4b3123bfdeb5061",
+  "packaging_ok": true,
+  "packaging_problems": [],
+  "live_acceptance_complete": false,
+  "runtime_remaining": [
+    "Dedicated Docker sandbox is not approved.",
+    "Approved Docker daemon identity is missing.",
+    "Live execution is disabled.",
+    "Two healthy measured baselines and derived policy are required.",
+    "Real abort/watchdog recovery demonstration requires dedicated-sandbox acceptance.",
+    "Application error fix, immutable-image deployment operator and measured replay require acceptance."
+  ],
+  "limitations": [
+    "This inventory does not execute a fault, prove a baseline, or certify deployment."
+  ]
+}

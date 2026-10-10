@@ -1,54 +1,34 @@
 # Bosch Chaos Engineering
 
-Repository foundation for a controlled, observable chaos-engineering demonstration.
-It combines a pinned OpenTelemetry Astronomy Shop with its existing metrics,
-traces, logs, and workload generator. A separate Python controller will add
-deterministic safety, bounded fault execution, recovery, and evidence reports.
+Integrated payment-chaos development platform built around the pinned OpenTelemetry
+Astronomy Shop. The Python controller records bounded experiments, restores faults
+with independent supervision, exports evidence and provides free rule diagnosis.
+The browser workbench now connects to that controller on the same origin.
 
-**Current milestone: Phase 0 contracts and execution boundary reviewed; local
-shop, cart/checkout, and telemetry startup previously verified.**
-The controller supports validated plans and previews. Live faults remain blocked
-until the baseline and watchdog gates pass. See
-[IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) and the
-[Phase 0 review](docs/phase0-review.md) for evidence and limitations.
-
-See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the phased task backlog,
-five-person ownership split, dependencies, and acceptance checks for the payment
-chaos agent, user workbench, and verified application fixes.
-For a presentation-oriented explanation of the intended project, see the
-[judge-facing brief](docs/judges-brief.md); it distinguishes planned capabilities
-from currently verified work.
-
-For the presentation narrative, see the [judge brief](docs/judges-brief.md).
-
-## Phase 0 controller checks
+**P0–P6 code is integrated; live acceptance and the complete payment repair remain
+pending.** P7 packaging, CI and branch delivery are provided, with an explicitly
+simulated demonstration. Execution stays disabled until dedicated sandbox and
+measured-baseline requirements pass. See [current status](IMPLEMENTATION_STATUS.md),
+[release/setup/demo instructions](docs/release-and-demo.md) and the
+[implementation task plan](IMPLEMENTATION_PLAN.md).
 
 ```sh
-python3 -m venv .venv
+git submodule update --init --recursive
+python3.13 -m venv .venv
 . .venv/bin/activate
 python -m pip install -r requirements-dev.txt
 make test
-python -m controller.schemas.export --check
-make flags
-make capabilities
-make preflight
+make test-workbench # Node 20+
+make release-check
+make eval-baseline
+make workbench # http://127.0.0.1:8095, real controller state
 ```
 
-Preflight is read-only and exits unsuccessfully until dedicated sandbox identity
-and isolation are approved. This is expected on the current shared preview.
-Versioned records live in `controller/schemas/` and `schemas/`; typed payment
-capabilities and execution policy live in `config/capabilities.yaml` and
-`config/execution_policy.yaml`. The older proposed catalogs remain design references.
-See [controller responsibilities](controller/README.md) and
-[sandbox setup](docs/sandbox.md). No model API is required for Phase 0.
-
-## Parallel P5/P6 preparation
-
-The fixture workbench and isolated patch tools are documented in
-[the integration handoff](docs/p5-p6-integration.md). Start the workbench with
-`make workbench PYTHON=.venv/bin/python` and open http://127.0.0.1:8095.
-Its sample runs are illustrative and all live mutations are blocked. P1–P4
-backend integration and real-sandbox acceptance remain required.
+`make workbench-fixture` serves illustrative records on port 8096. Neither fixture
+records nor the portable `python scripts/demo_controller.py` demonstration certify
+live payment behavior. No model API key is needed for the default workbench flow.
+The [P5/P6 connection guide](docs/p5-p6-integration.md) documents the remaining
+application-test, deployment and replay boundaries.
 
 ## Selected components
 

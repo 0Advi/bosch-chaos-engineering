@@ -87,10 +87,13 @@ def live_gates(plan: Plan, cap: Capability, policy: dict, spec: dict, env: Envir
         blockers.append("plan sandbox identity differs from config/sandbox.yaml")
     if not plan.baseline_ref:
         blockers.append("plan.baseline_ref must name a healthy baseline (make baseline)")
+    elif not (root / plan.baseline_ref).resolve().is_relative_to((root / "artifacts").resolve()):
+        blockers.append("baseline: reference escapes the artifact directory")
     else:
         blockers += [f"baseline: {b}" for b in baseline_check.usable_blockers(
             root / plan.baseline_ref, spec["daemon_id"], env.flag_store.path,
-            load_criteria()["baseline_max_age_hours"])]
+            load_criteria()["baseline_max_age_hours"], profile=load_criteria()["workload"],
+            sandbox_identity=spec, upstream_revision="dedc0178918e260823323b8d95005a8cb924b007")]
     if cap.adapter == AdapterKind.FLAG:
         blockers += [f"flags not at baseline: {p}" for p in baseline_problems(env.flag_store.path)]
     return blockers
@@ -129,7 +132,11 @@ class Runner:
             raise Unsupported("DUPLICATE_REQUEST", str(dup), run_id=dup.run_id)
         except RunInProgress as busy:
             raise Unsupported("RUN_IN_PROGRESS", str(busy), run_id=busy.run_id, state=busy.state)
-        self._spawn_watchdog(run_id)
+        try:
+            self._spawn_watchdog(run_id)
+        except Exception:
+            self.store.transition(run_id, S.ABORTED, stop_reason=R.PRECONDITION_FAILED)
+            raise Unsupported("WATCHDOG_UNAVAILABLE", "recovery watchdog failed to acknowledge readiness; no fault was applied", run_id=run_id)
         return run_id
 
     def drive(self, run_id: str, plan: Plan, cap: Capability, params: dict) -> dict:
@@ -305,6 +312,8 @@ class Runner:
     def _spawn_watchdog(self, run_id: str) -> None:
         argv = self.env.watchdog_argv(self.store.path, run_id)
         if not argv:
+            if isinstance(self.env, LiveEnvironment):
+                raise RuntimeError("live execution requires an independent watchdog")
             self.store.emit(run_id, "warning", detail="no watchdog configured for this environment")
             return
         log = (self.store.path.parent / f"{run_id}.watchdog.log").open("ab")
@@ -313,6 +322,17 @@ class Runner:
         log.close()
         self.store.update(run_id, watchdog_pid=proc.pid)
         self.store.emit(run_id, "note", watchdog_pid=proc.pid)
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            if any(e.data.get("watchdog_ready") is True and e.data.get("watchdog_pid") == proc.pid
+                   for e in self.store.events(run_id)):
+                return
+            if proc.poll() is not None:
+                break
+            time.sleep(0.05)
+        if proc.poll() is None:
+            proc.terminate()
+        raise RuntimeError("watchdog readiness acknowledgement missing")
 
     def _install_signals(self):
         def handler(signum, _frame):

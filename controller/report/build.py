@@ -66,7 +66,10 @@ def _baseline_reference(ref: Optional[str], root: Path, missing: list[str]) -> O
     if not ref:
         missing.append("plan has no baseline_ref")
         return None
-    path = root / ref
+    path = (root / ref).resolve()
+    if not path.is_relative_to((root / "artifacts").resolve()):
+        missing.append("baseline reference escapes the artifact directory")
+        return None
     if not path.is_file():
         missing.append(f"baseline file not available: {ref}")
         return None

@@ -69,8 +69,9 @@ def recommends_retry(text: str) -> bool:
 
 
 def _has_idempotency_evidence(bundle: EvidenceBundle) -> bool:
-    text = bundle.canonical().lower()
-    return "idempotency" in text or "ledger" in text
+    # Logs and model-supplied text cannot prove duplicate-charge safety.
+    # No trusted ledger/idempotency verifier is implemented in this release.
+    return False
 
 
 def ground(run_id: str, proposal: dict, bundle: EvidenceBundle, diagnoser: str, **provenance) -> DiagnosisResult:

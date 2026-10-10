@@ -59,9 +59,11 @@ capabilities:
 
 # Node 20+ is required for the browser-independent workbench tests.
 NODE ?= node
-.PHONY: workbench test-workbench
+.PHONY: workbench workbench-fixture test-workbench release-check
 workbench:
-	$(PYTHON) -m workbench.server --port 8095
+	$(PYTHON) -m workbench.controller_server --port 8095
+workbench-fixture:
+	$(PYTHON) -m workbench.server --port 8096
 test-workbench:
 	$(NODE) --test workbench/state.test.mjs
 probe:
@@ -88,3 +90,6 @@ eval-baseline:
 	$(PYTHON) -m evals.run --split heldout --diagnoser baseline
 eval-model:
 	$(PYTHON) -m evals.run --split heldout --diagnoser model
+
+release-check:
+	$(PYTHON) scripts/release_check.py

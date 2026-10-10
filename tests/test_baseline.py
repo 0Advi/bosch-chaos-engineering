@@ -146,3 +146,14 @@ def test_policy_refuses_single_unhealthy_or_irreproducible_input(fake, tmp_path,
     sick = baselines[1].model_copy(update={"healthy": False, "blocking": ["x"]})
     with pytest.raises(policy.PolicyError, match="not healthy"):
         policy.derive([baselines[0], sick], criteria, paths)
+
+
+def test_future_or_under_sampled_baseline_cannot_enable_live_execution(fake, tmp_path, criteria):
+    env = make_env(fake, tmp_path)
+    baseline, path = measure(env, criteria, attempts=2, duration_seconds=0, warmup=0)
+    # The short capture is useful for diagnostics, but cannot authorize the live profile.
+    reasons = check.usable_blockers(path, 'DAEMON-1', env.flag_file, 24, profile=criteria['workload'])
+    assert any('approved profile' in r for r in reasons)
+    future = baseline.model_copy(update={'finished_at': datetime.now(timezone.utc)+timedelta(hours=1)})
+    path.write_text(future.model_dump_json())
+    assert any('future' in r for r in check.usable_blockers(path, 'DAEMON-1', env.flag_file, 24))

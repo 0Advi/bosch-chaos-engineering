@@ -35,3 +35,14 @@ jobs:
           make flags
       - name: Validate selected deployment and isolation configuration
         run: make validate
+      - name: Offline release inventory
+        run: make release-check
+      - name: Held-out free rule evaluation and simulated controller demo
+        run: |
+          make eval-baseline
+          python scripts/demo_controller.py
+      - name: Publish reproducible integration evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-evidence
+          path: artifacts/results/

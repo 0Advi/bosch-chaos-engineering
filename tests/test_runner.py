@@ -140,8 +140,8 @@ def _baseline_file(root, finished_at, flag_file):
              for p in ("POST /api/checkout", "GET /", "GET /api/products", "POST /api/cart", "GET /api/cart")]
     b = Baseline(baseline_id="baseline-test", started_at=finished_at, finished_at=finished_at,
                  sandbox=SandboxRef(docker_context="default", daemon_id="", compose_project="bosch-chaos-sandbox"),
-                 upstream_revision="x", flag_sha256=hashlib.sha256(flag_file.read_bytes()).hexdigest(),
-                 workload={}, probes=stats, controls=[], telemetry={}, resources={}, health={}, criteria={},
+                 upstream_revision="dedc0178918e260823323b8d95005a8cb924b007", flag_sha256=hashlib.sha256(flag_file.read_bytes()).hexdigest(),
+                 workload={"attempts":30,"duration_seconds":180,"warmup_attempts":5}, probes=stats, controls=[], telemetry={}, resources={}, health={}, criteria={},
                  healthy=True, blocking=[], observations_file="x", limitations=[])
     path = root / "artifacts" / "baselines" / "baseline-test.json"
     path.parent.mkdir(parents=True, exist_ok=True)

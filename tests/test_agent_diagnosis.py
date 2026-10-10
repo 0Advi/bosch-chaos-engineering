@@ -143,10 +143,10 @@ def test_retry_detection(text, expected):
     assert recommends_retry(text) is expected
 
 
-def test_retry_allowed_when_idempotency_evidence_exists():
+def test_untrusted_ledger_text_cannot_authorize_payment_retries():
     bundle = EvidenceBundle(BUNDLE.items + [{"id": "ev-003", "kind": "note", "at": "x",
                                              "data": {"idempotency": "order-key ledger present"}}])
-    assert ground("run-1", proposal(next_action="Retry the charge."), bundle, "model").status == "grounded"
+    assert ground("run-1", proposal(next_action="Retry the charge."), bundle, "model").status == "unverified"
 
 
 @pytest.mark.parametrize("reply, kind", [(ProviderError("rate_limit", "slow down", True), "rate_limit"),

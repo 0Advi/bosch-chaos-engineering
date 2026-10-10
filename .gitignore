@@ -12,3 +12,7 @@ artifacts/resolved-compose.json
 
 artifacts/patch-workspaces/
 test-results/
+
+# Runtime measurements and derived host policy are not release fixtures.
+artifacts/baselines/
+config/payment_policy.yaml

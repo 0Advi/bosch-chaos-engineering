@@ -169,7 +169,9 @@ class ControllerAPI:
     def create_run(self, req) -> tuple[int, dict]:
         body = req.json()
         plan = self._plan(body.get("plan"))
-        if not body.get("live"):
+        if "live" in body and not isinstance(body["live"], bool):
+            raise ApiError("INVALID_INPUT", "live must be a boolean")
+        if body.get("live") is not True:
             return 200, {"ok": True, **runner.dry_run(plan)}
         return 202, self.start_run(plan, live=True)
 
@@ -178,12 +180,15 @@ class ControllerAPI:
         """The single entry point for live runs, shared by HTTP requests and agent tools."""
         if not live:
             return {"ok": True, **runner.dry_run(plan)}
-        try:
-            run, cap, params = runner.prepare(plan, env=self.env_factory(), store=self.store(),
-                                              limits=self.limits, gate_check=self.gate_check, log=self.log)
-            run_id = run.create(plan)
-        except Unsupported as refusal:
-            raise ApiError(refusal.code, refusal.message, **refusal.details)
+        with self.lock:
+            if self.baseline_job.get("state") == "running":
+                raise ApiError("JOB_IN_PROGRESS", "wait for baseline capture to finish")
+            try:
+                run, cap, params = runner.prepare(plan, env=self.env_factory(), store=self.store(),
+                                                  limits=self.limits, gate_check=self.gate_check, log=self.log)
+                run_id = run.create(plan)
+            except Unsupported as refusal:
+                raise ApiError(refusal.code, refusal.message, **refusal.details)
         thread = threading.Thread(target=self._drive, args=(run, run_id, plan, cap, params),
                                   name=f"run-{run_id}", daemon=True)
         self.run_threads[run_id] = thread
@@ -371,6 +376,7 @@ def make_handler(api: ControllerAPI, port: int):
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
             origin = self.headers.get("Origin")
             if origin in origins:
                 self.send_header("Access-Control-Allow-Origin", origin)
@@ -399,7 +405,12 @@ def make_handler(api: ControllerAPI, port: int):
                     raise ApiError("ORIGIN_REJECTED", f"origin {origin} may not change controller state")
                 if not (self.headers.get("Content-Type") or "").startswith("application/json"):
                     raise ApiError("UNSUPPORTED_MEDIA_TYPE", "mutations require application/json")
-                if int(self.headers.get("Content-Length") or 0) > MAX_BODY:
+                length = int(self.headers.get("Content-Length") or 0)
+                if length < 0:
+                    raise ApiError("INVALID_INPUT", "negative body length")
+                if self.headers.get("Transfer-Encoding"):
+                    raise ApiError("INVALID_INPUT", "transfer encoding is unsupported")
+                if length > MAX_BODY:
                     raise ApiError("PAYLOAD_TOO_LARGE", f"bodies are limited to {MAX_BODY} bytes")
 
         def _dispatch(self, method: str) -> None:
@@ -407,6 +418,9 @@ def make_handler(api: ControllerAPI, port: int):
             url = urlparse(self.path)
             self.query = parse_qs(url.query)
             try:
+                if hasattr(api, "workbench_bridge") and (url.path.startswith("/api/workbench") or url.path in api.workbench_bridge.assets):
+                    self._guard(mutating=method == "POST")
+                    return self._send(*api.workbench_bridge.dispatch(method, url.path, self))
                 for m, pattern, name in COMPILED:
                     match = pattern.match(url.path)
                     if match and m == method:
@@ -423,8 +437,14 @@ def make_handler(api: ControllerAPI, port: int):
                 raise ApiError("NOT_FOUND", f"no route for {method} {url.path}")
             except ApiError as error:
                 self._send(error.status, error.body())
+            except Unsupported as error:
+                self._send(422, {"ok": False, **error.as_dict()})
             except (ValueError, KeyError) as error:
                 self._send(400, {"ok": False, "error": "INVALID_INPUT", "message": str(error)[:300]})
+
+            except Exception as error:
+                api.log(f"request failed: {type(error).__name__}")
+                self._send(500, {"ok": False, "error": "INTERNAL_ERROR", "message": "Controller request failed; check the local log."})
 
         def do_GET(self):
             self._dispatch("GET")

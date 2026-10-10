@@ -44,6 +44,7 @@ def watch(store: RunStore, env: Environment, run_id: str, poll: float = 1.0,
     """Supervise one run until it is terminal, needs attention, or is taken over."""
     started = time.monotonic()
     who = f"watchdog:{os.getpid()}"
+    store.emit(run_id, "note", watchdog_ready=True, watchdog_pid=os.getpid())
     while True:
         run = store.get(run_id)
         state = S(run["state"])

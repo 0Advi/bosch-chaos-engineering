@@ -1,16 +1,30 @@
-# P5/P6 parallel preparation and handoff
+# P5/P6 preparation and connected integration
 
 Branch: `codex/p5-p6-preparation`, based on reviewed Phase 0 main `4cd84b5`.
 P1–P4 remain owned by the teammate. This branch adds separate `workbench/` and
 `improvements/` modules and does not modify controller contracts or the upstream
 submodule. The previously published Sites visualization remains a separate concept.
 
+## Integration update — 10 October 2026
+
+P1–P4 are now integrated. `make workbench` starts the connected same-origin P3
+controller on 8095; use `make workbench-fixture` on 8096 for illustrative records.
+`workbench/bridge.py` adapts readiness, typed plans, durable idempotent run creation,
+real history/events, restore, free diagnosis, baseline capture, saved evidence and
+isolated candidate preparation. The API table below was the original seam and is
+now implemented for observation/run actions. Approval/deployment routes fail closed
+with a concrete prerequisites message; they cannot accept a caller's test assertion.
+
+See [current release status](release-and-demo.md). Earlier preparation descriptions
+below are historical, not the current `make workbench` behavior. Live P5 acceptance
+and P6 deployment/replay remain pending.
+
 ## Start and verify
 
 ```sh
 . .venv/bin/activate
-make workbench
-# Open http://127.0.0.1:8095
+make workbench-fixture
+# Open http://127.0.0.1:8096
 ```
 
 The Python fixture server binds only to loopback. It validates plans through the
