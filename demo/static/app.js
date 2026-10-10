@@ -57,11 +57,43 @@ function setBusy(b) {
 }
 
 // =================================================================== events
+let lastSeq = 0, phaseClock = null, lostSince = null;
 function connect() {
   if (source) source.close();
+  lastSeq = 0;
   source = new EventSource("/api/events?after=0");
-  source.onmessage = (msg) => handle(JSON.parse(msg.data));
+  source.onmessage = (msg) => {
+    const ev = JSON.parse(msg.data);
+    if (ev.seq <= lastSeq) return;          // replayed after a reconnect
+    lastSeq = ev.seq; lostSince = null;
+    handle(ev);
+  };
+  source.onerror = () => { if (busy && !lostSince) { lostSince = Date.now(); line("Lost connection to the lab server, reconnecting...", "warn"); } };
 }
+
+// Phase countdown + detection of runs that died with the server (never look "stuck").
+const PHASE_LABEL = { baseline: "Baseline (steady state)", inject: "Injecting fault", fault: "Fault active, guardrails armed",
+  restore: "Restoring", recovered: "Recovery check", evidence: "Collecting evidence" };
+setInterval(async () => {
+  if (!busy) return;
+  if (lostSince && Date.now() - lostSince > 6000) {
+    try {
+      const st = await (await fetch("/api/status")).json();
+      if (!st.busy) {
+        lostSince = null; setBusy(false); source?.close();
+        line(`Run interrupted: the lab server restarted or stopped. Active faults: ${st.active_faults.length} (every fault is journaled and restored on restart).`, "error");
+        loadStatus();
+      } else { connect(); }
+    } catch { line("Lab server is not reachable. Start it with: python -m demo.server", "error"); }
+    return;
+  }
+  if (!phaseClock || !live.run) return;
+  const secs = Math.round((Date.now() - phaseClock.at) / 1000);
+  const planned = { baseline: live.run.durations?.baseline, fault: live.run.durations?.fault, recovered: live.run.durations?.recovery }[phaseClock.name];
+  const n = live.records.length;
+  const extra = phaseClock.name === "evidence" ? " (waiting for traces and metrics to flush, up to ~40 s)" : "";
+  $("#runline").innerHTML = `<b>${esc(PHASE_LABEL[phaseClock.name] || phaseClock.name)}</b> · ${secs}s${planned ? ` of ${planned}s` : ""} · ${n} requests observed${extra}${phaseClock.note ? ` · ${esc(phaseClock.note)}` : ""}`;
+}, 1000);
 
 let renderPending = false;
 function schedule() { if (!renderPending) { renderPending = true; requestAnimationFrame(() => { renderPending = false; renderLive(); }); } }
@@ -76,6 +108,7 @@ function handle(ev) {
       break;
     case "phase":
       live.timeline[d.name] = d.t;
+      phaseClock = { name: d.name, at: Date.now(), note: d.description || (d.results || []).join("; ") || (d.ttr != null ? `recovered in ${d.ttr}s` : "") };
       if (d.name === "inject") line(`Fault injected: ${d.description}`);
       else if (d.name === "restore") line(`Fault removed: ${(d.results || []).join("; ")}`);
       else if (d.name === "recovered") line(`All healthy paths recovered ${d.ttr}s after restore`);
@@ -104,7 +137,9 @@ function handle(ev) {
       if (findings) { findings.autofix = d; renderFindings(); }
       line(d.stage === "deployed" ? `Fix deployed to ${d.service}: ${d.message}` : `Deploying fix to ${d.file}…`); break;
     case "comparison": if (findings) { findings.comparison = d; renderFindings(); } loadStatus(); break;
-    case "done": setBusy(false); loadStatus(); renderStepper(); break;
+    case "done": phaseClock = null; setBusy(false); loadStatus(); renderStepper();
+      if (live.record) line(live.record.status === "completed" ? `Finished: ${live.record.title} on ${live.record.target}. Score ${live.record.resilience?.score ?? "–"}/100.` : `Stopped safely: ${live.record.abort_reason}`, live.record.status === "completed" ? "" : "warn");
+      break;
   }
 }
 
