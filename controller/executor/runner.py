@@ -1,8 +1,8 @@
 """Preview runner and deferred P2 execution scaffold.
 
-Live execution is unconditionally blocked in Phase 0. The scaffold below still
-needs measured baseline validation, protected-path observation, enforced hard
-deadlines, an independent watchdog and recovery testing before P2 enables it.
+Live execution is unconditionally blocked until P2. The draft gates below
+check for a healthy fresh baseline (P1), but enforced hard deadlines, an
+independent watchdog and recovery testing are still needed before P2 enables it.
 """
 from __future__ import annotations
 
@@ -13,11 +13,14 @@ import os
 from pathlib import Path
 import time
 
+from ..baseline import check as baseline_check
+from ..baseline.measure import load_criteria
 from ..catalog import Catalog, Unsupported, is_live, load_policy
+from ..observer import endpoints
 from ..safety import sandbox
 from ..schemas import AdapterKind, Event, Plan, RunState as S, StopReason as R, check_transition
 from . import adapters
-from .flag_store import FlagStore, baseline_problems
+from .flag_store import FLAG_FILE, FlagStore, baseline_problems
 
 ROOT = Path(__file__).resolve().parents[2]
 RESULTS = ROOT / "artifacts" / "results"
@@ -100,8 +103,12 @@ def _draft_live_gates(plan: Plan, cap, policy: dict, spec: dict) -> list[str]:
     if (ref.docker_context, ref.daemon_id, ref.compose_project) != (
             spec["docker_context"], spec["daemon_id"], spec["compose_project"]):
         blockers.append("plan sandbox identity differs from config/sandbox.yaml")
-    if not plan.baseline_ref or not (ROOT / plan.baseline_ref).is_file():
-        blockers.append("plan.baseline_ref must name an existing baseline file (P1-03)")
+    if not plan.baseline_ref:
+        blockers.append("plan.baseline_ref must name a healthy baseline (make baseline)")
+    else:
+        blockers += [f"baseline: {b}" for b in baseline_check.usable_blockers(
+            ROOT / plan.baseline_ref, spec["daemon_id"], FLAG_FILE,
+            load_criteria()["baseline_max_age_hours"])]
     if cap.adapter == AdapterKind.FLAG:
         blockers += [f"flags not at baseline: {p}" for p in baseline_problems()]
     return blockers
@@ -110,7 +117,7 @@ def _draft_live_gates(plan: Plan, cap, policy: dict, spec: dict) -> list[str]:
 def execute(plan: Plan, live: bool = False) -> dict:
     catalog, policy, spec = Catalog(), load_policy(), sandbox.load_spec()
     cap, params = validate(plan, catalog, policy)
-    actions = adapters.describe(cap, params, spec["network"], policy["app_url"])
+    actions = adapters.describe(cap, params, spec["network"], endpoints.app_url())
     if not live:
         return {"mode": "dry_run", "capability": cap.id, "parameters": params, "actions": actions}
     if blockers := live_gates(plan, cap, policy, spec):
@@ -121,7 +128,7 @@ def execute(plan: Plan, live: bool = False) -> dict:
         run_id = f"run-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}-{plan.plan_id}"[:64]
         journal = Journal(run_id)
         (journal.dir / "plan.json").write_text(plan.model_dump_json(indent=2))
-        shop = adapters.Shop(policy["app_url"], policy["request_timeout_seconds"])
+        shop = adapters.Shop(endpoints.app_url(), policy["request_timeout_seconds"])
         store, prior, applied, results = FlagStore(), None, None, []
 
         journal.to(S.BASELINING)

@@ -6,6 +6,8 @@ policy_version: "p0-2026-10-10"
 execution_enabled: false
 live_capabilities: []
 max_duration_seconds: 30
-app_url: http://127.0.0.1:8080        # frontend-proxy loopback binding (BOSCH_APP_PORT)
-request_timeout_seconds: 10           # provisional; P1-04 derives it from the baseline
+# The app URL comes from BOSCH_APP_PORT (deploy/demo.env, deploy/demo.local.env).
+# Measured payment gates live in config/payment_policy.yaml (make derive-policy);
+# P2 replaces the provisional values below with those gates.
+request_timeout_seconds: 10           # provisional until payment_policy.yaml exists
 recovery_checks: 3                    # valid checkouts that must pass after restoration

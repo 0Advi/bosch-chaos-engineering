@@ -1,0 +1,109 @@
+{
+  "$defs": {
+    "Gate": {
+      "additionalProperties": false,
+      "properties": {
+        "inputs": {
+          "title": "Inputs",
+          "type": "object"
+        },
+        "rule": {
+          "title": "Rule",
+          "type": "string"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "value",
+        "unit",
+        "rule",
+        "inputs"
+      ],
+      "title": "Gate",
+      "type": "object"
+    }
+  },
+  "$id": "bosch-chaos/paymentpolicy/1.0.0",
+  "additionalProperties": false,
+  "properties": {
+    "affected_probes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Affected Probes",
+      "type": "array"
+    },
+    "derived_at": {
+      "format": "date-time",
+      "title": "Derived At",
+      "type": "string"
+    },
+    "derived_from": {
+      "items": {
+        "type": "object"
+      },
+      "minItems": 2,
+      "title": "Derived From",
+      "type": "array"
+    },
+    "gates": {
+      "additionalProperties": {
+        "$ref": "#/$defs/Gate"
+      },
+      "title": "Gates",
+      "type": "object"
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Limitations",
+      "type": "array"
+    },
+    "policy_version": {
+      "title": "Policy Version",
+      "type": "string"
+    },
+    "protected_probes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Protected Probes",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "enum": [
+        "1.0.0"
+      ],
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "policy_version",
+    "derived_at",
+    "derived_from",
+    "affected_probes",
+    "protected_probes",
+    "gates",
+    "limitations"
+  ],
+  "title": "PaymentPolicy",
+  "type": "object"
+}
