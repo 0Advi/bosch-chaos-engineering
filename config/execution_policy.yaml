@@ -1,13 +1,13 @@
 schema_version: 1
-# Execution policy for payment capabilities. P0 gate: nothing is live.
+# Execution policy for payment capabilities. Nothing is live until the P2 gate passes.
 # Enabling a capability requires: execution_enabled: true, its ID in
 # live_capabilities, an approved config/sandbox.yaml, and a reviewed PR (P2).
-policy_version: "p0-2026-10-10"
+policy_version: "p2-2026-10-10"
 execution_enabled: false
 live_capabilities: []
 max_duration_seconds: 30
 # The app URL comes from BOSCH_APP_PORT (deploy/demo.env, deploy/demo.local.env).
-# Measured payment gates live in config/payment_policy.yaml (make derive-policy);
-# P2 replaces the provisional values below with those gates.
-request_timeout_seconds: 10           # provisional until payment_policy.yaml exists
-recovery_checks: 3                    # valid checkouts that must pass after restoration
+# Probe timeouts, intervals, thresholds and recovery checks come from the measured
+# config/payment_policy.yaml (make derive-policy); a live run is blocked without it.
+flag_propagation_timeout_seconds: 15  # flagd must serve the new value within this
+watchdog_grace_seconds: 10            # past the hard deadline before the watchdog takes over

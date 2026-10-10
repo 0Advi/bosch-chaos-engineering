@@ -120,19 +120,28 @@ def test_shop_refuses_non_loopback_url():
         adapters.Shop("http://payments.example.com", 5)
 
 
-def test_live_drafts_cannot_be_enabled_by_configuration(tools, monkeypatch):
+def test_configuration_alone_cannot_enable_live_execution(tools, monkeypatch, tmp_path):
+    """Flipping execution_enabled/approved is not enough: baseline, payment policy and
+    sandbox scope gates still block, before any run record or mutation exists."""
+    import shutil
+    from controller.executor.flag_store import FLAG_FILE
+    from tests.fake_env import FakeEnvironment
+
     plan = Plan.model_validate(propose(tools, "payment-unreachable")["result"])
     monkeypatch.setattr(runner, "load_policy", lambda: {
         **load_policy(), "execution_enabled": True, "live_capabilities": [plan.capability_id]})
     monkeypatch.setattr(runner.sandbox, "load_spec", lambda: {**tools.spec, "approved": True})
+    monkeypatch.setattr(runner.payment_policy, "POLICY_PATH", tmp_path / "missing.yaml")
 
     def forbidden(*args, **kwargs):
-        pytest.fail("P0 live refusal must happen before Docker access or application mutation")
+        pytest.fail("live refusal must happen before a run record or application mutation")
 
-    monkeypatch.setattr(runner.sandbox, "collect_snapshot", forbidden)
-    monkeypatch.setattr(runner, "run_lock", forbidden)
-    monkeypatch.setattr(adapters, "valid_checkout", forbidden)
+    monkeypatch.setattr(runner, "RunStore", forbidden)
+    monkeypatch.setattr(runner, "Runner", forbidden)
+    shutil.copy(FLAG_FILE, tmp_path / "demo.flagd.json")
     with pytest.raises(runner.Unsupported) as refusal:
-        runner.execute(plan, live=True)
+        runner.execute(plan, live=True, env=FakeEnvironment(tmp_path / "demo.flagd.json"))
+    blockers = refusal.value.details["blockers"]
     assert refusal.value.code == "LIVE_EXECUTION_BLOCKED"
-    assert any("P0 supports preview only" in e for e in refusal.value.details["blockers"])
+    assert any("baseline_ref" in b for b in blockers)
+    assert any("payment_policy.yaml" in b for b in blockers)
