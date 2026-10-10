@@ -5,8 +5,8 @@ It combines a pinned OpenTelemetry Astronomy Shop with its existing metrics,
 traces, logs, and workload generator. A separate Python controller will add
 deterministic safety, bounded fault execution, recovery, and evidence reports.
 
-**Current milestone: application/observability components assembled; deployment
-configuration validated. Application startup and chaos behavior are unverified.**
+**Current milestone: local shop, cart/checkout, and telemetry startup verified.
+See IMPLEMENTATION_STATUS.md for evidence and remaining work.**
 There is no executable fault command yet.
 
 ## Selected components
@@ -34,11 +34,13 @@ is in [config/experiments.yaml](config/experiments.yaml), with execution disable
 vendor/opentelemetry-demo/      Pinned Apache-2.0 upstream Git submodule
 deploy/                        Selected Compose overlay and Collector adjustment
 scripts/demo.py                Deployment validation/start/stop/smoke helper
+scripts/verify_startup.py       Synthetic checkout and telemetry startup checks
 config/experiments.yaml         Proposed disabled experiment and safety contract
 controller/README.md           Next-phase controller responsibilities
 artifacts/dependency_map.static.json  Static, unobserved architecture seed
 docs/architecture-review.md     Source-based architecture and selection rationale
 IMPLEMENTATION_STATUS.md        Evidence, limitations, and next work
+docs/local-preview.md           Local URLs and a walkthrough of the current demo
 ```
 
 ## Prerequisites and isolation
@@ -68,15 +70,20 @@ make validate
 
 If cloned without submodules, run `make bootstrap`. The helper refuses a changed
 upstream commit and checks selected services, absence of fixed container names,
-loopback-only ports, source-build policy, project network, and static-map scope.
+loopback-only ports, versioned-image policy, project network, and static-map scope.
 It does not need a running Docker daemon for configuration validation.
 
-Upstream source is pinned to
-`e5552ee25bcede2900d89188f076c464cd73c074`. Application images are built locally
-from that source as `bosch-local/demo:e5552ee-<service>` instead of pulled from
-floating `latest` tags. External infrastructure image versions come from the
-pinned upstream `.env`; record resolved image digests during runtime verification
-for stronger deployment reproducibility.
+Upstream source is pinned to official release **3.1.0**, commit
+`dedc0178918e260823323b8d95005a8cb924b007`. Default startup pulls matching
+`ghcr.io/open-telemetry/demo:3.1.0-<service>` images instead of floating `latest`
+tags. External infrastructure image versions come from the pinned upstream
+`.env`. Record resolved image digests during runtime verification for stronger
+deployment reproducibility.
+
+For development source builds, use `make build` and then
+`BOSCH_SOURCE_BUILD=true make start`. These use separate
+`bosch-local/demo:3.1.0-source-<service>` image names so official images are not
+overwritten. Source builds take longer than the default preview startup.
 
 ## Start, check, and stop
 
@@ -86,11 +93,19 @@ Use only the dedicated sandbox runtime:
 make start
 make status
 make smoke
+make verify
 ```
 
-`make start` builds the selected application images and waits up to 300 seconds
-for Compose startup/health checks after container creation. Image builds are not
-bounded by that startup wait. This step has not been executed here.
+`make start` downloads the selected images and waits up to 300 seconds for
+Compose startup/health checks after container creation. Image downloads are not
+bounded by that startup wait. Browser-driven Locust traffic is disabled by
+default to reduce memory use; plain HTTP traffic still exercises shop APIs.
+OpenSearch has a 180-second startup grace period because its JVM initialization
+on this machine exceeded the upstream health check's short allowance.
+The sandbox workload adapter filters out the upstream shopping-agent task because
+that service is excluded. Collector batching uses a one-second timeout, and
+host/container resource polling uses a 30-second interval to reduce local overhead.
+Short-experiment abort decisions will need faster application probes.
 
 | Interface | Local URL |
 |---|---|
@@ -101,13 +116,22 @@ bounded by that startup wait. This step has not been executed here.
 | Feature flags | http://localhost:8080/feature/ |
 | Prometheus | http://localhost:9090/ |
 
-Change `BOSCH_APP_PORT` or `BOSCH_METRICS_PORT` in `deploy/demo.env` if needed, or
-set the corresponding environment variables for each helper invocation.
+Change `BOSCH_APP_PORT` or `BOSCH_METRICS_PORT` in `deploy/demo.local.env` if needed
+(this machine-specific file is ignored by Git), or set the corresponding
+environment variables for each helper invocation. On the preparation machine,
+the local override uses shop port **8081** because 8080 belongs to another app,
+and `LOCUST_USERS=1` to reduce resource pressure during the preview.
+The official Docker Hub mirror can also be selected with
+`IMAGE_NAME=docker.io/otel/demo` in that file; the same release is published by
+upstream to both registries. The preparation machine uses this mirror because
+its downloads completed faster than GitHub Container Registry.
 `make smoke` checks the home page, products, recommendations, and Prometheus
 readiness. It is not an end-to-end checkout test or a healthy baseline.
 
-Then verify cart/checkout, telemetry arrival and freshness, and expected
-synchronous trace edges before any controller implementation or fault. Reuse
+`make verify` adds a synthetic demo cart/checkout, checks Grafana, and waits for
+traces, metrics and indexed logs. It saves `artifacts/startup_verification.json`.
+It is a startup check, not a baseline, and does not execute a fault. Further
+verify telemetry freshness and expected synchronous trace edges before any fault. Reuse
 upstream frontend and telemetry tests as appropriate. Its `make` telemetry-test
 targets manage their own deployment/teardown and should not be run unchanged
 against this customized deployment.

@@ -11,7 +11,7 @@ from urllib.request import urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 UPSTREAM = ROOT / "vendor" / "opentelemetry-demo"
-REVISION = "e5552ee25bcede2900d89188f076c464cd73c074"
+REVISION = "dedc0178918e260823323b8d95005a8cb924b007"
 PROJECT = "bosch-chaos-sandbox"
 EXPECTED = {
     "ad", "cart", "checkout", "currency", "email", "frontend",
@@ -23,7 +23,7 @@ EXPECTED = {
 }
 
 
-def compose():
+def compose(source_build=False):
     if not (UPSTREAM / "compose.yaml").is_file():
         raise RuntimeError("Upstream source is missing. Run make bootstrap.")
     actual = subprocess.check_output(
@@ -31,20 +31,27 @@ def compose():
     ).strip()
     if actual != REVISION:
         raise RuntimeError("Upstream revision differs from the reviewed source.")
-    return [
+    command = [
         "docker", "compose", "--project-name", PROJECT,
         "--project-directory", str(UPSTREAM),
         "--env-file", str(UPSTREAM / ".env"),
         "--env-file", str(ROOT / "deploy" / "demo.env"),
+    ]
+    local = ROOT / "deploy" / "demo.local.env"
+    if local.exists():
+        command += ["--env-file", str(local)]
+    if source_build:
+        command += ["--env-file", str(ROOT / "deploy" / "source-build.env")]
+    return command + [
         "-f", str(UPSTREAM / "compose.yaml"),
         "-f", str(UPSTREAM / "compose.observability.yaml"),
         "-f", str(ROOT / "deploy" / "compose.sandbox.yaml"),
     ]
 
 
-def validate():
+def validate(source_build=False):
     resolved = json.loads(subprocess.check_output(
-        compose() + ["config", "--format", "json"], text=True
+        compose(source_build) + ["config", "--format", "json"], text=True
     ))
     services = resolved["services"]
     if set(services) != EXPECTED:
@@ -60,28 +67,30 @@ def validate():
         if service.get("privileged") or service.get("network_mode") == "host":
             raise RuntimeError(f"Unexpected host access on {name}.")
         if service.get("build"):
-            if service.get("pull_policy") != "build":
-                raise RuntimeError(f"Source build policy missing on {name}.")
-            if not service["image"].startswith("bosch-local/demo:"):
-                raise RuntimeError(f"Application image is not local for {name}.")
+            policy = "build" if source_build else "missing"
+            prefixes = ("bosch-local/demo:3.1.0-source-",) if source_build else (
+                "ghcr.io/open-telemetry/demo:3.1.0-", "docker.io/otel/demo:3.1.0-")
+            if service.get("pull_policy") != policy or not service["image"].startswith(prefixes):
+                raise RuntimeError(f"Image/version policy differs from the selected mode for {name}.")
     if resolved["networks"]["default"]["name"] != PROJECT:
         raise RuntimeError("Sandbox network name differs from the selected project.")
     static = json.loads((ROOT / "artifacts" / "dependency_map.static.json").read_text())
     if {node["id"] for node in static["nodes"]} != EXPECTED:
         raise RuntimeError("Static service map does not match the deployment.")
     print("Validated: pinned upstream source, 25 services, project network,")
-    print("local source builds, and loopback-only application/metrics ports.")
-    print("Runtime isolation, app health, and safety behavior remain unverified.")
+    print("versioned application images, and loopback-only application/metrics ports.")
+    print("This configuration check does not verify runtime health or safety behavior.")
 
 
 def host_port(key, default):
     if key in os.environ:
         value = os.environ[key]
     else:
-        entries = dict(
-            line.split("=", 1) for line in (ROOT / "deploy" / "demo.env").read_text().splitlines()
-            if line and not line.startswith("#") and "=" in line
-        )
+        entries = {}
+        for file in [ROOT / "deploy" / "demo.env", ROOT / "deploy" / "demo.local.env"]:
+            if file.exists():
+                entries.update(line.split("=", 1) for line in file.read_text().splitlines()
+                               if line and not line.startswith("#") and "=" in line)
         value = entries.get(key, str(default))
     port = int(value)
     if not 1 <= port <= 65535:
@@ -113,15 +122,16 @@ def main():
         if action == "smoke":
             smoke()
             return 0
-        validate()
+        source_build = action == "build" or os.environ.get("BOSCH_SOURCE_BUILD") == "true"
+        validate(source_build)
         args = {
             "build": ["build"],
-            "start": ["up", "--build", "--detach", "--wait", "--wait-timeout", "300"],
+            "start": ["up", "--build" if source_build else "--no-build", "--detach", "--wait", "--wait-timeout", "300"],
             "stop": ["down"],
             "status": ["ps"],
         }
         if action in args:
-            return subprocess.call(compose() + args[action])
+            return subprocess.call(compose(source_build) + args[action])
         return 0
     except (OSError, ValueError, KeyError, RuntimeError, URLError, subprocess.CalledProcessError) as error:
         print(f"Setup check failed: {error}", file=sys.stderr)

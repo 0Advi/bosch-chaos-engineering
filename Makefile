@@ -1,13 +1,14 @@
 PYTHON ?= python3
 
-.PHONY: help bootstrap validate build start stop status smoke
+.PHONY: help bootstrap validate build start stop status smoke verify
 help:
 	@echo "bootstrap  Fetch pinned upstream source"
 	@echo "validate   Validate the selected deployment without starting containers"
 	@echo "build      Build application images from pinned source"
-	@echo "start      Build and start the 25-service sandbox"
+	@echo "start      Pull versioned images and start the 25-service sandbox"
 	@echo "status     Show sandbox container status"
 	@echo "smoke      Probe application APIs and Prometheus (not a full baseline)"
+	@echo "verify     Check cart/checkout and telemetry; save startup evidence"
 	@echo "stop       Stop this sandbox without deleting volumes"
 
 bootstrap:
@@ -24,3 +25,5 @@ status:
 	$(PYTHON) scripts/demo.py status
 smoke:
 	$(PYTHON) scripts/demo.py smoke
+verify:
+	$(PYTHON) scripts/verify_startup.py

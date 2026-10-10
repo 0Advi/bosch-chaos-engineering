@@ -7,71 +7,76 @@ services:
   ad:
     container_name: !reset null
     ports: !reset []
-    pull_policy: build
+    pull_policy: ${BOSCH_PULL_POLICY:-missing}
   cart:
     container_name: !reset null
     ports: !reset []
-    pull_policy: build
+    pull_policy: ${BOSCH_PULL_POLICY:-missing}
   checkout:
     container_name: !reset null
     ports: !reset []
-    pull_policy: build
+    pull_policy: ${BOSCH_PULL_POLICY:-missing}
   currency:
     container_name: !reset null
     ports: !reset []
-    pull_policy: build
+    pull_policy: ${BOSCH_PULL_POLICY:-missing}
   email:
     container_name: !reset null
     ports: !reset []
-    pull_policy: build
+    pull_policy: ${BOSCH_PULL_POLICY:-missing}
   frontend:
     container_name: !reset null
     ports: !reset []
-    pull_policy: build
+    pull_policy: ${BOSCH_PULL_POLICY:-missing}
   frontend-proxy:
     container_name: !reset null
     ports: !override
       - "127.0.0.1:${BOSCH_APP_PORT:-8080}:8080"
-    pull_policy: build
+    pull_policy: ${BOSCH_PULL_POLICY:-missing}
   image-provider:
     container_name: !reset null
     ports: !reset []
-    pull_policy: build
+    pull_policy: ${BOSCH_PULL_POLICY:-missing}
   load-generator:
+    command: ["--locustfile", "/usr/src/app/locust.sandbox.py"]
+    volumes:
+      - ../../deploy/locust.sandbox.py:/usr/src/app/locust.sandbox.py:ro
+    environment:
+      - LOCUST_BROWSER_TRAFFIC_ENABLED=${BOSCH_BROWSER_TRAFFIC_ENABLED:-false}
     container_name: !reset null
     ports: !reset []
-    pull_policy: build
+    pull_policy: ${BOSCH_PULL_POLICY:-missing}
   payment:
     container_name: !reset null
     ports: !reset []
-    pull_policy: build
+    pull_policy: ${BOSCH_PULL_POLICY:-missing}
   product-catalog:
     container_name: !reset null
     ports: !reset []
-    pull_policy: build
+    pull_policy: ${BOSCH_PULL_POLICY:-missing}
   quote:
     container_name: !reset null
     ports: !reset []
-    pull_policy: build
+    pull_policy: ${BOSCH_PULL_POLICY:-missing}
   recommendation:
     container_name: !reset null
     ports: !reset []
-    pull_policy: build
+    pull_policy: ${BOSCH_PULL_POLICY:-missing}
   shipping:
     container_name: !reset null
     ports: !reset []
-    pull_policy: build
+    pull_policy: ${BOSCH_PULL_POLICY:-missing}
   flagd:
     container_name: !reset null
     ports: !reset []
   flagd-ui:
     container_name: !reset null
     ports: !reset []
-    pull_policy: build
+    pull_policy: ${BOSCH_PULL_POLICY:-missing}
   telemetry-docs:
     container_name: !reset null
     ports: !reset []
-    pull_policy: build
+    pull_policy: ${BOSCH_PULL_POLICY:-missing}
   astronomy-db:
     container_name: !reset null
     ports: !reset []
@@ -93,6 +98,8 @@ services:
     container_name: !reset null
     ports: !reset []
   grafana:
+    environment:
+      - GF_SERVER_ROOT_URL=http://localhost:${BOSCH_APP_PORT:-8080}/grafana/
     container_name: !reset null
     ports: !reset []
   prometheus:
@@ -102,8 +109,11 @@ services:
   opensearch:
     container_name: !reset null
     ports: !reset []
-    pull_policy: build
+    pull_policy: ${BOSCH_PULL_POLICY:-missing}
+    healthcheck:
+      start_period: 180s
+      retries: 20
   opamp-server:
     container_name: !reset null
     ports: !reset []
-    pull_policy: build
+    pull_policy: ${BOSCH_PULL_POLICY:-missing}

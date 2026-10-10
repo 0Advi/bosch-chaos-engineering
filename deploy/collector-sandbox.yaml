@@ -1,6 +1,21 @@
 # Retain the existing telemetry stack without exporting profiles to an absent
 # Firepit service. This file is loaded after upstream Collector configuration.
+receivers:
+  docker_stats:
+    collection_interval: 30s
+  host_metrics:
+    collection_interval: 30s
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 512
 service:
   pipelines:
+    traces:
+      processors: [resource_detection, memory_limiter, transform/sanitize_spans, gen_ai_normalizer, transform/redact_sensitive_data, redaction, batch]
+    metrics:
+      processors: [resource_detection, memory_limiter, batch]
+    logs:
+      processors: [resource_detection, memory_limiter, transform/sanitize_logs, batch]
     profiles:
       exporters: [debug]

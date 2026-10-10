@@ -2,7 +2,7 @@
   "schema_version": 1,
   "review_date": "2026-10-10",
   "repository": "https://github.com/open-telemetry/opentelemetry-demo",
-  "revision": "e5552ee25bcede2900d89188f076c464cd73c074",
+  "revision": "dedc0178918e260823323b8d95005a8cb924b007",
   "status": "static_inspection_only",
   "recommended_compose_layers": [
     "vendor/opentelemetry-demo/compose.yaml",
@@ -17,7 +17,8 @@
     "Runtime calls are a partial static seed: flagd calls, telemetry emission, and all proxy UI routes are not expanded.",
     "Kafka edges describe producer/consumer dependencies; async trace linkage is not established.",
     "Layer-specific edges are not all active in minimal mode.",
-    "Upstream fixed container names and host port bindings are replaced by the Bosch deployment overlay. Collector full/Kafka configuration is not loaded."
+    "Upstream fixed container names and host port bindings are replaced by the Bosch deployment overlay. Collector full/Kafka configuration is not loaded.",
+    "Deployment source was changed to official release 3.1.0 after comparing its core and observability configuration against the initially inspected main revision. Runtime edges remain unobserved."
   ],
   "nodes": [
     {
@@ -1222,5 +1223,6 @@
       "layer": "observability",
       "runtime_observed": false
     }
-  ]
+  ],
+  "release": "3.1.0"
 }

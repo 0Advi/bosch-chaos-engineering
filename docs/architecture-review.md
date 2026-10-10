@@ -1,5 +1,12 @@
 # Bosch Day 1: architecture and component selection
 
+Deployment update: the localhost preview uses official release 3.1.0, source
+commit `dedc0178918e260823323b8d95005a8cb924b007`, with matching versioned images.
+The original main-branch review below is historical. The release retains the
+same 25 selected services. Its Jaeger version uses `/jaeger/ui/api/services`
+rather than the newer v3 endpoint discussed in the original source inspection.
+See `IMPLEMENTATION_STATUS.md` for actual runtime evidence.
+
 Reviewed 10 October 2026. Scope: read the two supplied briefs, inspect upstream source, map architecture, and recommend components. No application startup, controller implementation, or fault execution was performed.
 
 Repository: [OpenTelemetry Demo](https://github.com/open-telemetry/opentelemetry-demo). Inspected commit: `e5552ee25bcede2900d89188f076c464cd73c074` (8 October 2026). The source is Apache-2.0 licensed. Source references below are pinned to this commit; deployment documentation is current upstream documentation.
