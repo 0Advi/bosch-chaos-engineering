@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import difflib
+import os
 from pathlib import Path
 
 import yaml
@@ -57,6 +58,8 @@ class Catalog:
 
 
 def load_policy(path: Path = POLICY_PATH) -> dict:
+    if path == POLICY_PATH and os.environ.get("BOSCH_EXECUTION_POLICY"):
+        path = Path(os.environ["BOSCH_EXECUTION_POLICY"])
     return yaml.safe_load(path.read_text())
 
 

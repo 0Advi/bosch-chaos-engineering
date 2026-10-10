@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import json
+import os
+import sys
 from pathlib import Path
 import subprocess
 
@@ -20,6 +22,8 @@ SERVICE_LABEL = "com.docker.compose.service"
 
 
 def load_spec(path: Path = SPEC_PATH) -> dict:
+    if path == SPEC_PATH and os.environ.get("BOSCH_SANDBOX_SPEC"):
+        path = Path(os.environ["BOSCH_SANDBOX_SPEC"])
     return yaml.safe_load(path.read_text())
 
 
@@ -76,7 +80,13 @@ class ScopeReport:
 
 
 def _under(path: str, roots: list[Path]) -> bool:
-    resolved = Path(path).resolve(strict=False)
+    candidate = Path(path)
+    # Docker Desktop exposes macOS bind paths through its Linux VM prefix.
+    if sys.platform == "darwin" and path.startswith("/host_mnt/"):
+        host_path = Path(path.removeprefix("/host_mnt"))
+        if host_path.exists():
+            candidate = host_path
+    resolved = candidate.resolve(strict=False)
     return any(resolved == root or root in resolved.parents for root in roots)
 
 

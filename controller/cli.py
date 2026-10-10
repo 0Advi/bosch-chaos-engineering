@@ -162,7 +162,8 @@ def main(argv=None) -> int:
         elif args.cmd == "diagnose":
             from .agent.providers import AnthropicProvider
             from .agent.service import diagnose_run
-            telemetry = Telemetry(endpoints.jaeger_api(), endpoints.metrics_url()) if args.with_telemetry else None
+            telemetry = Telemetry(endpoints.jaeger_api(), endpoints.metrics_url(),
+                                  log_search=opensearch_log_search(sandbox.load_spec()["compose_project"])) if args.with_telemetry else None
             provider = AnthropicProvider() if args.diagnoser == "model" else None
             result = diagnose_run(RunStore(runner.DB_PATH), args.run_id, runner.RESULTS, args.diagnoser,
                                   provider, telemetry)

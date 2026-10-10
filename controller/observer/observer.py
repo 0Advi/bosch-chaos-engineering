@@ -26,15 +26,18 @@ def _outcome(http_status: Optional[int], transport_error: Optional[str]) -> str:
 
 def wait_for_trace(telemetry: Telemetry, trace_id: str, wait_seconds: float,
                    poll_seconds: float = 1.0) -> tuple[Optional[dict], Optional[float]]:
-    """Poll Jaeger until the trace appears; return (summary, seconds waited)."""
+    """Poll until required checkout spans arrive; retain partial evidence at timeout."""
     started = time.monotonic()
+    last_summary = None
     while True:
         summary = telemetry.trace(trace_id)
         waited = time.monotonic() - started
         if summary is not None:
-            return summary, round(waited, 2)
+            last_summary = summary
+            if all(s in summary.get("services", []) for s in REQUIRED_SERVICES) and summary.get("charge_spans"):
+                return summary, round(waited, 2)
         if waited >= wait_seconds:
-            return None, None
+            return last_summary, round(waited, 2) if last_summary is not None else None
         time.sleep(poll_seconds)
 
 

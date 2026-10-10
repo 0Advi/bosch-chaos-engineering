@@ -130,6 +130,9 @@ def main():
             "stop": ["down"],
             "status": ["ps"],
         }
+        if action == "start":
+            from build_payment_health import build
+            build()
         if action in args:
             return subprocess.call(compose(source_build) + args[action])
         return 0

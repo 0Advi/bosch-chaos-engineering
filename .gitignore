@@ -16,3 +16,10 @@ test-results/
 # Runtime measurements and derived host policy are not release fixtures.
 artifacts/baselines/
 config/payment_policy.yaml
+
+config/*.local.yaml
+deploy/health-bin/
+
+# Local demo run records and generated auto-fix overlays
+artifacts/demo-runs/
+deploy/autofix/

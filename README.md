@@ -73,7 +73,7 @@ docs/local-preview.md           Local URLs and a walkthrough of the current demo
 
 ## Prerequisites and isolation
 
-- Python 3.10+, Git, Make, Docker with its daemon running, and Docker Compose
+- Python 3.10+, Go 1.20+, Git, Make, Docker with its daemon running, and Docker Compose
   **2.24.4+** (needed for overlay reset/override tags).
 - A dedicated local sandbox Docker environment. The controller will need to
   verify that environment before a future experiment.
@@ -123,6 +123,12 @@ make status
 make smoke
 make verify
 ```
+
+`make start` requires Go to compile a small static payment health probe for
+the Docker daemon architecture. It avoids repeatedly loading Node telemetry
+instrumentation inside the health check. The generated executable stays local.
+The sandbox gives checkout and product catalog 128 MiB each, including their
+health-check processes; remeasure baselines after resource-budget changes.
 
 `make start` downloads the selected images and waits up to 300 seconds for
 Compose startup/health checks after container creation. Image downloads are not
