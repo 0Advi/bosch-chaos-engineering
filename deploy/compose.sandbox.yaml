@@ -13,6 +13,10 @@ services:
     ports: !reset []
     pull_policy: ${BOSCH_PULL_POLICY:-missing}
   checkout:
+    deploy:
+      resources:
+        limits:
+          memory: 128M
     container_name: !reset null
     ports: !reset []
     pull_policy: ${BOSCH_PULL_POLICY:-missing}
@@ -47,10 +51,18 @@ services:
     ports: !reset []
     pull_policy: ${BOSCH_PULL_POLICY:-missing}
   payment:
+    volumes:
+      - ../../deploy/health-bin/payment-health:/bosch/payment-health:ro
+    healthcheck:
+      test: ["CMD", "/bosch/payment-health"]
     container_name: !reset null
     ports: !reset []
     pull_policy: ${BOSCH_PULL_POLICY:-missing}
   product-catalog:
+    deploy:
+      resources:
+        limits:
+          memory: 128M
     container_name: !reset null
     ports: !reset []
     pull_policy: ${BOSCH_PULL_POLICY:-missing}

@@ -93,3 +93,14 @@ eval-model:
 
 release-check:
 	$(PYTHON) scripts/release_check.py
+
+.PHONY: local-workbench
+local-workbench:
+	$(PYTHON) scripts/local_workbench.py
+
+# Presentation demo: live payment fault + evidence + LangGraph agent (free LLM tier, key in .env).
+.PHONY: demo demo-deps
+demo-deps:
+	$(PYTHON) -m pip install -r demo/requirements.txt
+demo:
+	$(PYTHON) -m demo.server --port 8099

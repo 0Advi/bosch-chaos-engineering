@@ -52,7 +52,10 @@ def test_records_never_contain_card_cvv_address_or_email(shop):
     observations = [observe_checkout(r, telemetry, "run-test", 2, check_logs=False)[0] for r in records]
     assert_clean([records, [o.model_dump(mode="json") for o in observations]], SECRETS)
     text = json.dumps(records)
-    assert "creditCard" not in text and "672" not in json.dumps([r["steps"] for r in records])
+    assert "creditCard" not in text
+    # Compare field values, not raw text: random hex trace ids can contain the digits "672".
+    step_values = [v for r in records for step in r["steps"] for v in step.values()]
+    assert not any(v in (672, "672") or (isinstance(v, str) and "cvv" in v.lower()) for v in step_values)
 
 
 def test_complete_observation_links_trace_through_payment(shop):

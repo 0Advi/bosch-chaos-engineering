@@ -107,7 +107,7 @@ If you cloned without submodules, run `make bootstrap`.
 
 ## Running the sandbox shop
 
-**Prerequisites:** Python 3.10+, Git, Make, Docker (daemon running), Docker Compose **2.24.4+**, and a **dedicated local sandbox Docker environment**. Upstream estimates about 3 GB RAM and 14 GB disk for minimal mode; usage for this project has not been measured.
+**Prerequisites:** Python 3.10+, Go 1.20+, Git, Make, Docker (daemon running), Docker Compose **2.24.4+**, and a **dedicated local sandbox Docker environment**. Upstream estimates about 3 GB RAM and 14 GB disk for minimal mode; usage for this project has not been measured.
 
 ```sh
 make validate   # configuration checks, no Docker daemon needed
@@ -131,7 +131,27 @@ Change `BOSCH_APP_PORT` or `BOSCH_METRICS_PORT` in `deploy/demo.local.env` (Git-
 
 `make smoke` and `make verify` are startup checks. They are **not** a healthy baseline and do not execute a fault. Keep the upstream random feature-flag scheduler idle and failure flags at their resting settings during baseline and Bosch experiments.
 
+`make start` requires Go to compile a small static payment health probe for the Docker daemon architecture, avoiding repeated loads of Node telemetry instrumentation inside the health check. The generated executable stays local. The sandbox gives checkout and product catalog 128 MiB each, including their health-check processes; remeasure baselines after resource-budget changes.
+
 For development source builds: `make build`, then `BOSCH_SOURCE_BUILD=true make start`. These use separate `bosch-local/demo:3.1.0-source-<service>` image names so official images are never overwritten.
+
+## AI Chaos Lab (live demo)
+
+`demo/` is a self-contained, presentation-ready layer on top of the sandbox: an AI planner proposes experiments, a guarded engine injects one real fault while synthetic customers use every shop path, and LangGraph agents explain the outcome and propose a code fix.
+
+```sh
+python -m pip install -r demo/requirements.txt
+cp .env.example .env            # add a free GEMINI_API_KEY (or GROQ_API_KEY)
+make start                      # sandbox must be running
+python -m demo.server           # http://127.0.0.1:8099
+```
+
+- **19 fault scenarios across 10 categories:** flagd faults built into the services (payment, cart, catalog, ads, email, recommendation, DB lock contention, slow images, shipping), container crash, hang, network partition, CPU starvation, database overload, traffic spike, and traffic spike plus crash.
+- **Safety:** health gate before injection; auto-stop when the shop goes down, the blast radius spreads to unrelated paths, or error rate or latency exceed limits; 60 s hard cap; kill switch. Every fault is journaled before it is applied and restored on finish, abort, crash or restart. Flag restores are verified against what flagd actually serves.
+- **Evidence:** 10 customer paths probed independently, Jaeger error chains, Prometheus span-metric errors, container logs and state, blast radius versus the dependency graph, and a deterministic 0-100 resilience score.
+- **Agents (LangGraph):** *planner* (dependency map → ranked experiments → safety validator), *analyst* (read-only tools → ranked findings → code fix that is syntax-checked and retried → grounding reviewer), *campaign* (ranked weaknesses across runs). Uses free-tier Gemini with automatic model fallback on quota limits.
+- **Auto-fix:** validated fixes to interpreted services (payment, recommendation, email) are hot-patched through a generated Compose overlay with rollback. The same experiment is then re-run and compared. Compiled services get a saved patch for an image rebuild.
+- **Report:** Markdown findings report export. See [docs/PRESENTATION.md](docs/PRESENTATION.md).
 
 ## Safety model
 
@@ -166,6 +186,7 @@ Kafka, accounting, fraud detection, the shopping AI agent/MCP/chatbot and profil
 ## Repository layout
 
 ```text
+demo/                           AI Chaos Lab: faults, workload, evidence, agents, dashboard, auto-fix
 controller/                     Contracts, bounded tools, scope checks, previews
 schemas/                        Exported JSON Schemas for shared records
 config/experiments.yaml         Disabled experiment and safety contract

@@ -5,6 +5,10 @@ receivers:
     collection_interval: 30s
   host_metrics:
     collection_interval: 30s
+connectors:
+  # Flush span metrics every 5 s (default 60 s) so experiment evidence is near-real-time.
+  span_metrics:
+    metrics_flush_interval: 5s
 processors:
   batch:
     timeout: 1s
