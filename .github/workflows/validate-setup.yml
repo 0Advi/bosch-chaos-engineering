@@ -16,8 +16,14 @@ jobs:
           python-version: '3.13'
       - name: Install pinned controller test dependencies
         run: python -m pip install -r requirements-dev.txt
-      - name: Validate controller contracts and scope without live execution
-        run: make test
+      - name: Controller, API, report and recovery tests (no Docker, live faults or model credentials)
+        run: python -m pytest -q --junitxml=test-results/junit.xml
+      - name: Publish test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: controller-test-results
+          path: test-results/junit.xml
       - name: Check generated schemas and healthy flag definitions
         run: |
           python -m controller.schemas.export --check

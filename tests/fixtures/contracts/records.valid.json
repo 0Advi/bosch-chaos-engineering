@@ -227,5 +227,141 @@
       }
     },
     "limitations": []
+  },
+  "RunReport": {
+    "schema_version": "1.0.0",
+    "report_id": "rpt-d1d50124cf75bf1f",
+    "run_id": "run-20261010-082355-e90536",
+    "capability_id": "payment-unreachable",
+    "plan": {
+      "plan_id": "plan-2d6c29c27ecf",
+      "request_id": "req-577c55570223",
+      "parameters": {},
+      "duration_seconds": 1,
+      "baseline_ref": null,
+      "requested_by": "agent",
+      "policy_version": "p2-2026-10-10"
+    },
+    "state": "RECOVERED",
+    "stop_reason": "completed",
+    "terminal": true,
+    "cleanup_status": "verified",
+    "timeline": [
+      {
+        "seq": 3,
+        "at": "2026-10-10T08:23:55.362030Z",
+        "state": "BASELINING",
+        "stop_reason": null,
+        "by": null
+      },
+      {
+        "seq": 5,
+        "at": "2026-10-10T08:23:55.362651Z",
+        "state": "READY",
+        "stop_reason": null,
+        "by": null
+      },
+      {
+        "seq": 6,
+        "at": "2026-10-10T08:23:55.363100Z",
+        "state": "ARMED",
+        "stop_reason": null,
+        "by": null
+      },
+      {
+        "seq": 7,
+        "at": "2026-10-10T08:23:55.363270Z",
+        "state": "RUNNING",
+        "stop_reason": null,
+        "by": null
+      },
+      {
+        "seq": 30,
+        "at": "2026-10-10T08:23:56.366211Z",
+        "state": "RESTORING",
+        "stop_reason": "completed",
+        "by": "controller:10642"
+      },
+      {
+        "seq": 32,
+        "at": "2026-10-10T08:23:56.368460Z",
+        "state": "VERIFYING_RECOVERY",
+        "stop_reason": "completed",
+        "by": "controller:10642"
+      },
+      {
+        "seq": 35,
+        "at": "2026-10-10T08:23:56.370129Z",
+        "state": "RECOVERED",
+        "stop_reason": "completed",
+        "by": "controller:10642"
+      }
+    ],
+    "injection": {
+      "flag": "paymentUnreachable",
+      "variant": "on",
+      "applied_at": "2026-10-10T08:23:55.363697+00:00",
+      "applied_seq": 8,
+      "served_value": true,
+      "evaluation_matches": true,
+      "restored_at": "2026-10-10T08:23:56.368197+00:00",
+      "restore_outcome": "restored",
+      "restore_evaluation_matches": true,
+      "restorer": "controller:10642"
+    },
+    "comparison": {
+      "schema_version": "1.0.0",
+      "comparison_id": "cmp-run-20261010-082355-e90536",
+      "original_run_id": "run-20261010-082355-e90536",
+      "replay_run_id": null,
+      "baseline": {
+        "attempts": 1,
+        "successes": 1,
+        "missing_samples": 0,
+        "p95_latency_ms": 5.0
+      },
+      "fault": {
+        "attempts": 10,
+        "successes": 0,
+        "missing_samples": 0,
+        "p95_latency_ms": 5.0
+      },
+      "recovery": {
+        "attempts": 2,
+        "successes": 2,
+        "missing_samples": 0,
+        "p95_latency_ms": 5.0
+      },
+      "differences": [
+        "valid checkout: baseline 1/1, fault 0/10, recovery 2/2",
+        "checkout p95: baseline 5.0 ms, fault 5.0 ms",
+        "protected probes: 0 failed of 40"
+      ],
+      "limitations": [
+        "Fault-phase probes record HTTP outcome and latency; trace/log correlation uses the P1 observer.",
+        "Values describe one sandbox run on one host and are not a production estimate."
+      ],
+      "conclusive": true
+    },
+    "protected": {
+      "samples": 40,
+      "failures": 0,
+      "failed_probes": []
+    },
+    "baseline_reference": null,
+    "conclusive": true,
+    "impact_observed": true,
+    "missing_data": [
+      "plan has no baseline_ref"
+    ],
+    "limitations": [
+      "Fault-phase probes record HTTP outcome and latency; trace/log correlation uses the P1 observer.",
+      "Values describe one sandbox run on one host and are not a production estimate."
+    ],
+    "evidence": {
+      "event_count": 35,
+      "last_seq": 35,
+      "events_sha256": "eae8db084012bd9e5593a4e47343ead60bdf3814f9267b9143d1814a305346c1"
+    }
   }
 }

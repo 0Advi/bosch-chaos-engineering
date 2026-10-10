@@ -1,5 +1,5 @@
 """Operator CLI: python -m controller.cli {capabilities,preflight,plan,run,abort,status,events,
-reconcile,restore,probe,baseline,compare-baselines,derive-policy}"""
+reconcile,restore,report,serve,probe,baseline,compare-baselines,derive-policy}"""
 from __future__ import annotations
 
 import argparse
@@ -16,7 +16,9 @@ from .baseline import check as baseline_check, policy as payment_policy
 from .baseline.measure import Environment, load_criteria, measure
 from .baseline.runtime import DockerRuntime, upstream_revision
 from .catalog import Unsupported
+from .api import ControllerAPI, serve
 from .executor import runner
+from .report.evidence import export_run
 from .executor.environment import LiveEnvironment
 from .executor.recovery import drive_recovery
 from .observer import endpoints
@@ -42,6 +44,13 @@ def live_environment(timeout: float, logs: bool = True) -> Environment:
         sandbox=SandboxRef(docker_context=context, daemon_id=daemon, compose_project=spec["compose_project"]),
         runtime=DockerRuntime(spec["compose_project"]), upstream_revision=upstream_revision(),
         log=lambda line: print(line, file=sys.stderr, flush=True))
+
+
+def live_baseline_runner():
+    """Measure a baseline against the running sandbox (used by the API job)."""
+    criteria = load_criteria()
+    env = live_environment(criteria["workload"]["request_timeout_seconds"])
+    return measure(env, criteria)
 
 
 def _run_view(run: dict) -> dict:
@@ -101,6 +110,13 @@ def main(argv=None) -> int:
     events.add_argument("run_id")
     events.add_argument("--after", type=int, default=0)
     sub.add_parser("reconcile", help="restore runs whose controller died (run after a restart)")
+    report = sub.add_parser("report", help="export evidence and print the run report (P3-01)")
+    report.add_argument("run_id")
+    report.add_argument("--format", choices=["md", "json"], default="md")
+    api_cmd = sub.add_parser("serve", help="start the local controller API (P3-02)")
+    api_cmd.add_argument("--port", type=int, default=8765)
+    api_cmd.add_argument("--allow-origin", action="append", default=[],
+                         help="extra browser origin allowed to change state (e.g. the workbench dev server)")
     probe = sub.add_parser("probe", help="one valid checkout + protected probes, correlated with telemetry")
     probe.add_argument("--fixture", default="valid",
                        choices=["valid", "invalid_number", "expired", "unsupported_type"])
@@ -134,6 +150,23 @@ def main(argv=None) -> int:
                     args.out.write_text(json.dumps(out["result"], indent=2) + "\n")
         elif args.cmd == "run":
             out = runner.execute(Plan.model_validate_json(args.plan_file.read_text()), live=args.live)
+        elif args.cmd == "report":
+            store = RunStore(runner.DB_PATH)
+            directory = export_run(store, args.run_id, runner.RESULTS)
+            if args.format == "md":
+                print((directory / "report.md").read_text())
+                return 0
+            out = {"ok": True, "evidence": str(directory),
+                   "report": json.loads((directory / "report.json").read_text())}
+        elif args.cmd == "serve":
+            server = serve(ControllerAPI(allowed_origins=tuple(args.allow_origin),
+                                         log=lambda line: print(line, file=sys.stderr)), port=args.port)
+            print(f"controller API on http://127.0.0.1:{server.server_address[1]}/api/v1/health", flush=True)
+            try:
+                server.serve_forever()
+            except KeyboardInterrupt:
+                server.shutdown()
+            return 0
         elif args.cmd in ("abort", "status", "events", "reconcile", "restore"):
             out = _runs_command(args)
         elif args.cmd == "probe":
