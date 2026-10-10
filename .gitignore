@@ -11,3 +11,4 @@ artifacts/results/
 artifacts/resolved-compose.json
 
 artifacts/patch-workspaces/
+test-results/

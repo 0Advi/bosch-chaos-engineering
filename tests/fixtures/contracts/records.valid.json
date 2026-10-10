@@ -161,5 +161,242 @@
     "limitations": [
       "Contract fixture only; no measurements."
     ]
+  },
+  "Baseline": {
+    "baseline_id": "baseline-0001",
+    "started_at": "2026-10-10T09:50:00Z",
+    "finished_at": "2026-10-10T09:55:00Z",
+    "sandbox": {
+      "docker_context": "default",
+      "daemon_id": "unset",
+      "compose_project": "bosch-chaos-sandbox"
+    },
+    "upstream_revision": "unknown",
+    "flag_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "workload": {
+      "attempts": 2
+    },
+    "probes": [
+      {
+        "probe": "POST /api/checkout",
+        "attempts": 2,
+        "failures": 0,
+        "failure_rate": 0.0,
+        "p50_ms": 120.0,
+        "p90_ms": 150.0,
+        "p95_ms": 150.0,
+        "p99_ms": 150.0,
+        "max_ms": 150.0
+      }
+    ],
+    "controls": [],
+    "telemetry": {},
+    "resources": {},
+    "health": {},
+    "criteria": {},
+    "healthy": true,
+    "blocking": [],
+    "observations_file": "artifacts/baselines/baseline-0001.observations.jsonl",
+    "limitations": []
+  },
+  "PaymentPolicy": {
+    "policy_version": "1",
+    "derived_at": "2026-10-10T10:00:00Z",
+    "derived_from": [
+      {
+        "baseline_id": "baseline-0001"
+      },
+      {
+        "baseline_id": "baseline-0002"
+      }
+    ],
+    "affected_probes": [
+      "POST /api/checkout"
+    ],
+    "protected_probes": [
+      "GET /api/products"
+    ],
+    "gates": {
+      "checkout_p95_ms": {
+        "value": 300,
+        "unit": "ms",
+        "rule": "2x baseline p95",
+        "inputs": {
+          "baseline_p95_ms": 150
+        }
+      }
+    },
+    "limitations": []
+  },
+  "RunReport": {
+    "schema_version": "1.0.0",
+    "report_id": "rpt-d1d50124cf75bf1f",
+    "run_id": "run-20261010-082355-e90536",
+    "capability_id": "payment-unreachable",
+    "plan": {
+      "plan_id": "plan-2d6c29c27ecf",
+      "request_id": "req-577c55570223",
+      "parameters": {},
+      "duration_seconds": 1,
+      "baseline_ref": null,
+      "requested_by": "agent",
+      "policy_version": "p2-2026-10-10"
+    },
+    "state": "RECOVERED",
+    "stop_reason": "completed",
+    "terminal": true,
+    "cleanup_status": "verified",
+    "timeline": [
+      {
+        "seq": 3,
+        "at": "2026-10-10T08:23:55.362030Z",
+        "state": "BASELINING",
+        "stop_reason": null,
+        "by": null
+      },
+      {
+        "seq": 5,
+        "at": "2026-10-10T08:23:55.362651Z",
+        "state": "READY",
+        "stop_reason": null,
+        "by": null
+      },
+      {
+        "seq": 6,
+        "at": "2026-10-10T08:23:55.363100Z",
+        "state": "ARMED",
+        "stop_reason": null,
+        "by": null
+      },
+      {
+        "seq": 7,
+        "at": "2026-10-10T08:23:55.363270Z",
+        "state": "RUNNING",
+        "stop_reason": null,
+        "by": null
+      },
+      {
+        "seq": 30,
+        "at": "2026-10-10T08:23:56.366211Z",
+        "state": "RESTORING",
+        "stop_reason": "completed",
+        "by": "controller:10642"
+      },
+      {
+        "seq": 32,
+        "at": "2026-10-10T08:23:56.368460Z",
+        "state": "VERIFYING_RECOVERY",
+        "stop_reason": "completed",
+        "by": "controller:10642"
+      },
+      {
+        "seq": 35,
+        "at": "2026-10-10T08:23:56.370129Z",
+        "state": "RECOVERED",
+        "stop_reason": "completed",
+        "by": "controller:10642"
+      }
+    ],
+    "injection": {
+      "flag": "paymentUnreachable",
+      "variant": "on",
+      "applied_at": "2026-10-10T08:23:55.363697+00:00",
+      "applied_seq": 8,
+      "served_value": true,
+      "evaluation_matches": true,
+      "restored_at": "2026-10-10T08:23:56.368197+00:00",
+      "restore_outcome": "restored",
+      "restore_evaluation_matches": true,
+      "restorer": "controller:10642"
+    },
+    "comparison": {
+      "schema_version": "1.0.0",
+      "comparison_id": "cmp-run-20261010-082355-e90536",
+      "original_run_id": "run-20261010-082355-e90536",
+      "replay_run_id": null,
+      "baseline": {
+        "attempts": 1,
+        "successes": 1,
+        "missing_samples": 0,
+        "p95_latency_ms": 5.0
+      },
+      "fault": {
+        "attempts": 10,
+        "successes": 0,
+        "missing_samples": 0,
+        "p95_latency_ms": 5.0
+      },
+      "recovery": {
+        "attempts": 2,
+        "successes": 2,
+        "missing_samples": 0,
+        "p95_latency_ms": 5.0
+      },
+      "differences": [
+        "valid checkout: baseline 1/1, fault 0/10, recovery 2/2",
+        "checkout p95: baseline 5.0 ms, fault 5.0 ms",
+        "protected probes: 0 failed of 40"
+      ],
+      "limitations": [
+        "Fault-phase probes record HTTP outcome and latency; trace/log correlation uses the P1 observer.",
+        "Values describe one sandbox run on one host and are not a production estimate."
+      ],
+      "conclusive": true
+    },
+    "protected": {
+      "samples": 40,
+      "failures": 0,
+      "failed_probes": []
+    },
+    "baseline_reference": null,
+    "conclusive": true,
+    "impact_observed": true,
+    "missing_data": [
+      "plan has no baseline_ref"
+    ],
+    "limitations": [
+      "Fault-phase probes record HTTP outcome and latency; trace/log correlation uses the P1 observer.",
+      "Values describe one sandbox run on one host and are not a production estimate."
+    ],
+    "evidence": {
+      "event_count": 35,
+      "last_seq": 35,
+      "events_sha256": "eae8db084012bd9e5593a4e47343ead60bdf3814f9267b9143d1814a305346c1"
+    }
+  },
+  "DiagnosisResult": {
+    "schema_version": "1.0.0",
+    "result_id": "dx-2ad809e2ea2e",
+    "run_id": "run-20261010-090000-abc123",
+    "diagnoser": "baseline",
+    "status": "grounded",
+    "diagnosis": {
+      "schema_version": "1.0.0",
+      "run_id": "run-20261010-090000-abc123",
+      "service": "checkout",
+      "edge": "checkout->payment",
+      "category": "connectivity",
+      "affected_paths": [
+        "POST /api/checkout"
+      ],
+      "cited_observations": [
+        "ev-008",
+        "ev-007"
+      ],
+      "alternatives": [],
+      "uncertainty": "medium",
+      "next_action": "check the payment address/connectivity used by checkout"
+    },
+    "suggestions": [],
+    "requested_observations": [],
+    "problems": [],
+    "evidence_sha256": "9c9dbf253910a630b1290792360e247c4b0e3c76caa65e5f28cea2d80ca9525f",
+    "evidence_items": 29,
+    "model_requested": null,
+    "model_served": null,
+    "prompt_version": null,
+    "usage": {},
+    "latency_s": null,
+    "provider_error": null
   }
 }

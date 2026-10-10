@@ -1,0 +1,255 @@
+{
+  "case_id": "dev-no-telemetry-01",
+  "split": "dev",
+  "kind": "diagnosis",
+  "description": "422s with no traces/logs: card vs handler indistinguishable",
+  "bundle": {
+    "items": [
+      {
+        "id": "ev-001",
+        "kind": "run_phase",
+        "at": "2026-10-10T08:59:41+00:00",
+        "data": {
+          "state": "BASELINING"
+        }
+      },
+      {
+        "id": "ev-002",
+        "kind": "checkout_attempt",
+        "at": "2026-10-10T08:59:43+00:00",
+        "data": {
+          "phase": "baseline",
+          "http_status": 200,
+          "matched": true,
+          "latency_ms": 2805.0,
+          "cart_items_after": 0,
+          "error_code": null,
+          "trace_id": "00000000000000000000000000000002"
+        }
+      },
+      {
+        "id": "ev-003",
+        "kind": "protected_probes",
+        "at": "2026-10-10T08:59:43.500000+00:00",
+        "data": {
+          "phase": "baseline",
+          "samples": 4,
+          "failed": []
+        }
+      },
+      {
+        "id": "ev-004",
+        "kind": "run_phase",
+        "at": "2026-10-10T08:59:44.500000+00:00",
+        "data": {
+          "state": "READY"
+        }
+      },
+      {
+        "id": "ev-005",
+        "kind": "run_phase",
+        "at": "2026-10-10T08:59:45.500000+00:00",
+        "data": {
+          "state": "ARMED"
+        }
+      },
+      {
+        "id": "ev-006",
+        "kind": "run_phase",
+        "at": "2026-10-10T08:59:46.500000+00:00",
+        "data": {
+          "state": "RUNNING"
+        }
+      },
+      {
+        "id": "ev-007",
+        "kind": "checkout_attempt",
+        "at": "2026-10-10T08:59:48.500000+00:00",
+        "data": {
+          "phase": "fault",
+          "http_status": 422,
+          "matched": false,
+          "latency_ms": 610.0,
+          "cart_items_after": 1,
+          "error_code": "PAYMENT_FAILED",
+          "trace_id": "00000000000000000000000000000007"
+        }
+      },
+      {
+        "id": "ev-008",
+        "kind": "protected_probes",
+        "at": "2026-10-10T08:59:49+00:00",
+        "data": {
+          "phase": "fault",
+          "samples": 4,
+          "failed": []
+        }
+      },
+      {
+        "id": "ev-009",
+        "kind": "checkout_attempt",
+        "at": "2026-10-10T08:59:51+00:00",
+        "data": {
+          "phase": "fault",
+          "http_status": 422,
+          "matched": false,
+          "latency_ms": 610.0,
+          "cart_items_after": 1,
+          "error_code": "PAYMENT_FAILED",
+          "trace_id": "00000000000000000000000000000009"
+        }
+      },
+      {
+        "id": "ev-010",
+        "kind": "protected_probes",
+        "at": "2026-10-10T08:59:51.500000+00:00",
+        "data": {
+          "phase": "fault",
+          "samples": 4,
+          "failed": []
+        }
+      },
+      {
+        "id": "ev-011",
+        "kind": "checkout_attempt",
+        "at": "2026-10-10T08:59:53.500000+00:00",
+        "data": {
+          "phase": "fault",
+          "http_status": 422,
+          "matched": false,
+          "latency_ms": 610.0,
+          "cart_items_after": 1,
+          "error_code": "PAYMENT_FAILED",
+          "trace_id": "0000000000000000000000000000000b"
+        }
+      },
+      {
+        "id": "ev-012",
+        "kind": "protected_probes",
+        "at": "2026-10-10T08:59:54+00:00",
+        "data": {
+          "phase": "fault",
+          "samples": 4,
+          "failed": []
+        }
+      },
+      {
+        "id": "ev-013",
+        "kind": "checkout_attempt",
+        "at": "2026-10-10T08:59:56+00:00",
+        "data": {
+          "phase": "fault",
+          "http_status": 422,
+          "matched": false,
+          "latency_ms": 610.0,
+          "cart_items_after": 1,
+          "error_code": "PAYMENT_FAILED",
+          "trace_id": "0000000000000000000000000000000d"
+        }
+      },
+      {
+        "id": "ev-014",
+        "kind": "protected_probes",
+        "at": "2026-10-10T08:59:56.500000+00:00",
+        "data": {
+          "phase": "fault",
+          "samples": 4,
+          "failed": []
+        }
+      },
+      {
+        "id": "ev-015",
+        "kind": "run_phase",
+        "at": "2026-10-10T08:59:57.500000+00:00",
+        "data": {
+          "state": "RESTORING"
+        }
+      },
+      {
+        "id": "ev-016",
+        "kind": "run_phase",
+        "at": "2026-10-10T08:59:58.500000+00:00",
+        "data": {
+          "state": "VERIFYING_RECOVERY"
+        }
+      },
+      {
+        "id": "ev-017",
+        "kind": "checkout_attempt",
+        "at": "2026-10-10T09:00:00.500000+00:00",
+        "data": {
+          "phase": "recovery",
+          "http_status": 200,
+          "matched": true,
+          "latency_ms": 2830.0,
+          "cart_items_after": 0,
+          "error_code": null,
+          "trace_id": "00000000000000000000000000000011"
+        }
+      },
+      {
+        "id": "ev-018",
+        "kind": "checkout_attempt",
+        "at": "2026-10-10T09:00:02.500000+00:00",
+        "data": {
+          "phase": "recovery",
+          "http_status": 200,
+          "matched": true,
+          "latency_ms": 2830.0,
+          "cart_items_after": 0,
+          "error_code": null,
+          "trace_id": "00000000000000000000000000000012"
+        }
+      },
+      {
+        "id": "ev-019",
+        "kind": "checkout_attempt",
+        "at": "2026-10-10T09:00:04.500000+00:00",
+        "data": {
+          "phase": "recovery",
+          "http_status": 200,
+          "matched": true,
+          "latency_ms": 2830.0,
+          "cart_items_after": 0,
+          "error_code": null,
+          "trace_id": "00000000000000000000000000000013"
+        }
+      },
+      {
+        "id": "ev-020",
+        "kind": "protected_probes",
+        "at": "2026-10-10T09:00:05+00:00",
+        "data": {
+          "phase": "recovery",
+          "samples": 4,
+          "failed": []
+        }
+      },
+      {
+        "id": "ev-021",
+        "kind": "run_phase",
+        "at": "2026-10-10T09:00:06+00:00",
+        "data": {
+          "state": "RECOVERED"
+        }
+      }
+    ],
+    "missing": [
+      "traces and logs were not collected for this run"
+    ],
+    "notes": [
+      "run outcome recorded by the controller: RECOVERED"
+    ]
+  },
+  "expected": {
+    "category": "insufficient_evidence",
+    "service": null,
+    "edge": null,
+    "key_evidence": [],
+    "accept_categories": [],
+    "must_request_observations": true
+  },
+  "tags": [
+    "insufficient_evidence"
+  ]
+}

@@ -15,6 +15,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 SPEC_PATH = ROOT / "config" / "sandbox.yaml"
 PROJECT_LABEL = "com.docker.compose.project"
+TOOL_LABEL = "bosch.chaos.tool"  # short-lived curl/grpcurl containers started by the controller
 SERVICE_LABEL = "com.docker.compose.service"
 
 
@@ -40,6 +41,7 @@ def collect_snapshot() -> dict:
             "name": item["Name"].lstrip("/"),
             "project": labels.get(PROJECT_LABEL),
             "service": labels.get(SERVICE_LABEL),
+            "tool": labels.get(TOOL_LABEL),
             "state": item["State"]["Status"],
             "privileged": item["HostConfig"].get("Privileged", False),
             "network_mode": item["HostConfig"].get("NetworkMode", ""),
@@ -93,7 +95,8 @@ def evaluate(snapshot: dict, spec: dict, repo_root: Path = ROOT) -> ScopeReport:
 
     project = spec["compose_project"]
     ours = [c for c in snapshot["containers"] if c.get("project") == project]
-    foreign = [c["name"] for c in snapshot["containers"] if c.get("project") != project]
+    foreign = [c["name"] for c in snapshot["containers"]
+               if c.get("project") != project and not c.get("tool")]
     if foreign and spec.get("require_dedicated_daemon", True):
         err(f"daemon is shared with unrelated containers: {sorted(foreign)[:10]}")
 

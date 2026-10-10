@@ -1,0 +1,351 @@
+{
+  "$defs": {
+    "Comparison": {
+      "additionalProperties": false,
+      "properties": {
+        "baseline": {
+          "$ref": "#/$defs/PhaseSummary"
+        },
+        "comparison_id": {
+          "pattern": "^[a-z0-9][a-z0-9-]{1,63}$",
+          "title": "Comparison Id",
+          "type": "string"
+        },
+        "conclusive": {
+          "title": "Conclusive",
+          "type": "boolean"
+        },
+        "differences": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Differences",
+          "type": "array"
+        },
+        "fault": {
+          "$ref": "#/$defs/PhaseSummary"
+        },
+        "limitations": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Limitations",
+          "type": "array"
+        },
+        "original_run_id": {
+          "pattern": "^[a-z0-9][a-z0-9-]{1,63}$",
+          "title": "Original Run Id",
+          "type": "string"
+        },
+        "recovery": {
+          "$ref": "#/$defs/PhaseSummary"
+        },
+        "replay_run_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z0-9][a-z0-9-]{1,63}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Replay Run Id"
+        },
+        "schema_version": {
+          "const": "1.0.0",
+          "default": "1.0.0",
+          "enum": [
+            "1.0.0"
+          ],
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "comparison_id",
+        "original_run_id",
+        "baseline",
+        "fault",
+        "recovery",
+        "conclusive"
+      ],
+      "title": "Comparison",
+      "type": "object"
+    },
+    "PhaseSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "attempts": {
+          "minimum": 0,
+          "title": "Attempts",
+          "type": "integer"
+        },
+        "missing_samples": {
+          "minimum": 0,
+          "title": "Missing Samples",
+          "type": "integer"
+        },
+        "p95_latency_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P95 Latency Ms"
+        },
+        "successes": {
+          "minimum": 0,
+          "title": "Successes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "attempts",
+        "successes",
+        "missing_samples"
+      ],
+      "title": "PhaseSummary",
+      "type": "object"
+    },
+    "RunState": {
+      "enum": [
+        "DRAFT",
+        "BASELINING",
+        "READY",
+        "ARMED",
+        "RUNNING",
+        "RESTORING",
+        "VERIFYING_RECOVERY",
+        "RECOVERED",
+        "ABORTED",
+        "FAILED",
+        "NEEDS_ATTENTION"
+      ],
+      "title": "RunState",
+      "type": "string"
+    },
+    "StopReason": {
+      "enum": [
+        "completed",
+        "manual_abort",
+        "deadline",
+        "protected_path_degraded",
+        "observation_loss",
+        "config_conflict",
+        "adapter_error",
+        "controller_lost",
+        "precondition_failed"
+      ],
+      "title": "StopReason",
+      "type": "string"
+    },
+    "TimelineEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "title": "At",
+          "type": "string"
+        },
+        "by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "By"
+        },
+        "seq": {
+          "minimum": 1,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "state": {
+          "$ref": "#/$defs/RunState"
+        },
+        "stop_reason": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StopReason"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "seq",
+        "at",
+        "state"
+      ],
+      "title": "TimelineEntry",
+      "type": "object"
+    }
+  },
+  "$id": "bosch-chaos/runreport/1.0.0",
+  "additionalProperties": false,
+  "description": "Deterministic report rebuilt from saved run evidence only (P3-01).",
+  "properties": {
+    "baseline_reference": {
+      "anyOf": [
+        {
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Baseline Reference"
+    },
+    "capability_id": {
+      "pattern": "^[a-z0-9][a-z0-9-]{1,63}$",
+      "title": "Capability Id",
+      "type": "string"
+    },
+    "cleanup_status": {
+      "enum": [
+        "not_started",
+        "pending",
+        "not_required",
+        "verified",
+        "needs_attention"
+      ],
+      "title": "Cleanup Status",
+      "type": "string"
+    },
+    "comparison": {
+      "$ref": "#/$defs/Comparison"
+    },
+    "conclusive": {
+      "title": "Conclusive",
+      "type": "boolean"
+    },
+    "evidence": {
+      "title": "Evidence",
+      "type": "object"
+    },
+    "impact_observed": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Impact Observed"
+    },
+    "injection": {
+      "anyOf": [
+        {
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Injection"
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Limitations",
+      "type": "array"
+    },
+    "missing_data": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Missing Data",
+      "type": "array"
+    },
+    "plan": {
+      "title": "Plan",
+      "type": "object"
+    },
+    "protected": {
+      "title": "Protected",
+      "type": "object"
+    },
+    "report_id": {
+      "pattern": "^[a-z0-9][a-z0-9-]{1,63}$",
+      "title": "Report Id",
+      "type": "string"
+    },
+    "run_id": {
+      "pattern": "^[a-z0-9][a-z0-9-]{1,63}$",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "enum": [
+        "1.0.0"
+      ],
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "state": {
+      "$ref": "#/$defs/RunState"
+    },
+    "stop_reason": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/StopReason"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "terminal": {
+      "title": "Terminal",
+      "type": "boolean"
+    },
+    "timeline": {
+      "items": {
+        "$ref": "#/$defs/TimelineEntry"
+      },
+      "title": "Timeline",
+      "type": "array"
+    }
+  },
+  "required": [
+    "report_id",
+    "run_id",
+    "capability_id",
+    "plan",
+    "state",
+    "terminal",
+    "cleanup_status",
+    "timeline",
+    "comparison",
+    "protected",
+    "conclusive",
+    "missing_data",
+    "limitations",
+    "evidence"
+  ],
+  "title": "RunReport",
+  "type": "object"
+}

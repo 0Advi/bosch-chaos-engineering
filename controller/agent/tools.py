@@ -1,9 +1,14 @@
-"""Bounded tool registry exposed to the model (P0-04).
+"""Bounded tool registry exposed to the model (P0-04, P4-02).
 
 The model only ever names a capability ID and typed parameters. Tool inputs
 are strict pydantic models, so free-form commands, paths, URLs, containers or
 flag names are rejected before any controller code runs. Every tool returns
 {"ok": true, "result": ...} or {"ok": false, "error": CODE, "message": ...}.
+
+Run tools call the same controller service as the HTTP API (runner gates,
+run store, state machine). Mutating tools work only when the registry is
+built with `allow_mutation=True` by an operator; diagnosis sessions are
+read-only. Tool results are data for the model, never instructions.
 """
 from __future__ import annotations
 
@@ -49,6 +54,11 @@ class RunRefArgs(Args):
     after_seq: Annotated[int, Field(ge=0)] = 0
 
 
+class RunPlanArgs(Args):
+    plan: dict
+    live: bool = False
+
+
 class Tool(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     name: str
@@ -68,10 +78,11 @@ def _err(code: str, message: str, **details):
 
 class ToolRegistry:
     def __init__(self, catalog: Optional[Catalog] = None, policy: Optional[dict] = None,
-                 spec: Optional[dict] = None):
+                 spec: Optional[dict] = None, controller=None, allow_mutation: bool = False):
         self.catalog = catalog or Catalog()
         self.policy = policy or load_policy()
         self.spec = spec or sandbox.load_spec()
+        self.controller, self.allow_mutation = controller, allow_mutation
         self.calls = 0
         self.tools = {t.name: t for t in [
             Tool(name="list_capabilities", description="List supported, preview and disabled fault capabilities.",
@@ -82,12 +93,22 @@ class ToolRegistry:
                  args=ProposePlanArgs, mutates=False, handler=self._propose),
             Tool(name="validate_plan", description="Validate a plan document against contracts and policy.",
                  args=ValidatePlanArgs, mutates=False, handler=self._validate),
-            Tool(name="run_plan", description="Execute a validated plan (controller-gated).",
-                 args=RunRefArgs, mutates=True, handler=self._not_in_phase),
+            Tool(name="inspect_path", description="Payment call path: dependency edges, pinned source "
+                 "excerpt status and source-derived error categories.",
+                 args=NoArgs, mutates=False, handler=self._inspect_path),
+            Tool(name="run_plan", description="Dry-run a plan, or with live=true execute it through the "
+                 "controller's gates (operator-enabled sessions only).",
+                 args=RunPlanArgs, mutates=True, handler=self._run_plan),
+            Tool(name="get_run", description="Authoritative state, cleanup status and result of a run.",
+                 args=RunRefArgs, mutates=False, handler=self._get_run),
             Tool(name="get_run_events", description="Read ordered run events after a sequence number.",
-                 args=RunRefArgs, mutates=False, handler=self._not_in_phase),
+                 args=RunRefArgs, mutates=False, handler=self._get_events),
+            Tool(name="get_report", description="Report rebuilt from the run's saved evidence.",
+                 args=RunRefArgs, mutates=False, handler=self._get_report),
             Tool(name="abort_run", description="Request abort and restoration of an active run.",
-                 args=RunRefArgs, mutates=True, handler=self._not_in_phase),
+                 args=RunRefArgs, mutates=True, handler=self._abort),
+            Tool(name="capture_baseline", description="Start one healthy-baseline measurement job.",
+                 args=NoArgs, mutates=True, handler=self._capture_baseline),
         ]}
 
     # ---------------------------------------------------------- public API
@@ -111,10 +132,17 @@ class ToolRegistry:
         except ValidationError as error:
             return _err("INVALID_ARGUMENTS", "arguments do not match the tool schema",
                         problems=[f"{'.'.join(map(str, e['loc']))}: {e['msg']}" for e in error.errors()])
+        dry_run = name == "run_plan" and not args.live
+        if tool.mutates and not dry_run and not (self.allow_mutation and self.controller):
+            return _err("MUTATION_NOT_PERMITTED", f"{name} changes sandbox state; this session is read-only")
         try:
             return _ok(tool.handler(args))
         except Unsupported as refusal:
             return {"ok": False, **refusal.as_dict()}
+        except Exception as error:  # controller errors become tool errors, never crashes
+            if hasattr(error, "code") and hasattr(error, "message"):
+                return _err(error.code, error.message, **getattr(error, "details", {}))
+            return _err("TOOL_FAILED", f"{type(error).__name__}: {str(error)[:200]}")
 
     # ------------------------------------------------------------ handlers
     def _list(self, _):
@@ -152,7 +180,46 @@ class ToolRegistry:
         cap, params = validate(plan, self.catalog, self.policy)
         return {"valid": True, "capability_id": cap.id, "parameters": params}
 
-    def _not_in_phase(self, _):
-        raise Unsupported("NOT_AVAILABLE_IN_PHASE",
-                          "Execution and run inspection are exposed to the model after P3/P4; "
-                          "an operator runs plans through the controller CLI.")
+    def _inspect_path(self, _):
+        from .context import build_context, payment_edges
+        import yaml
+        from pathlib import Path
+        context = build_context()
+        semantics = yaml.safe_load((Path(__file__).resolve().parents[2] / "config" /
+                                    "payment_semantics.yaml").read_text())
+        return {"edges": payment_edges(), "source_excerpts": context.excerpt_status,
+                "categories": {k: v["meaning"] for k, v in semantics["categories"].items()},
+                "retry_rule": semantics["retry_rule"]}
+
+    def _service(self):
+        if self.controller is None:
+            raise Unsupported("NOT_CONFIGURED", "no controller service is attached to this session")
+        return self.controller
+
+    def _run_plan(self, args: RunPlanArgs):
+        try:
+            plan = Plan.model_validate(args.plan)
+        except ValidationError as error:
+            raise Unsupported("INVALID_PLAN", "plan does not match the Plan contract",
+                              problems=[f"{'.'.join(map(str, e['loc']))}: {e['msg']}" for e in error.errors()])
+        if plan.requested_by != "agent":
+            raise Unsupported("INVALID_PLAN", "plans submitted by the model must be requested_by=agent")
+        if not args.live:
+            from ..executor.runner import dry_run
+            return dry_run(plan)
+        return self._service().start_run(plan, live=True)
+
+    def _get_run(self, args: RunRefArgs):
+        return self._service().run_summary(args.run_id)
+
+    def _get_events(self, args: RunRefArgs):
+        return {"events": self._service().run_events(args.run_id, args.after_seq)}
+
+    def _get_report(self, args: RunRefArgs):
+        return self._service().run_report(args.run_id)
+
+    def _abort(self, args: RunRefArgs):
+        return self._service().abort_run(args.run_id)
+
+    def _capture_baseline(self, _):
+        return self._service().start_baseline_job()
