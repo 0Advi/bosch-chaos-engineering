@@ -1,0 +1,6 @@
+# Retain the existing telemetry stack without exporting profiles to an absent
+# Firepit service. This file is loaded after upstream Collector configuration.
+service:
+  pipelines:
+    profiles:
+      exporters: [debug]

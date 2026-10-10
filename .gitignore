@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.venv/
+.DS_Store
+.env
+.env.local
+deploy/*.local.env
+artifacts/baseline.json
+artifacts/dependency_map.json
+artifacts/results/
+artifacts/resolved-compose.json

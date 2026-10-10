@@ -1,0 +1,1226 @@
+{
+  "schema_version": 1,
+  "review_date": "2026-10-10",
+  "repository": "https://github.com/open-telemetry/opentelemetry-demo",
+  "revision": "e5552ee25bcede2900d89188f076c464cd73c074",
+  "status": "static_inspection_only",
+  "recommended_compose_layers": [
+    "vendor/opentelemetry-demo/compose.yaml",
+    "vendor/opentelemetry-demo/compose.observability.yaml",
+    "deploy/compose.sandbox.yaml"
+  ],
+  "default_network_name": "bosch-chaos-sandbox",
+  "limitations": [
+    "No startup or runtime observation performed.",
+    "Declared startup dependencies are separate from inferred runtime calls.",
+    "Ports are source expressions, not resolved host bindings.",
+    "Runtime calls are a partial static seed: flagd calls, telemetry emission, and all proxy UI routes are not expanded.",
+    "Kafka edges describe producer/consumer dependencies; async trace linkage is not established.",
+    "Layer-specific edges are not all active in minimal mode.",
+    "Upstream fixed container names and host port bindings are replaced by the Bosch deployment overlay. Collector full/Kafka configuration is not loaded."
+  ],
+  "nodes": [
+    {
+      "id": "ad",
+      "group": "core",
+      "selected_for_day1": true,
+      "source_files": [
+        "compose.yaml"
+      ],
+      "healthcheck_declared": true,
+      "ports_unresolved": [
+        "${AD_PORT}",
+        "${AD_PROMETHEUS_PORT}"
+      ],
+      "runtime_observed": false
+    },
+    {
+      "id": "cart",
+      "group": "core",
+      "selected_for_day1": true,
+      "source_files": [
+        "compose.yaml",
+        "compose.observability.yaml"
+      ],
+      "healthcheck_declared": false,
+      "ports_unresolved": [
+        "${CART_PORT}"
+      ],
+      "runtime_observed": false
+    },
+    {
+      "id": "checkout",
+      "group": "core",
+      "selected_for_day1": true,
+      "source_files": [
+        "compose.yaml",
+        "compose.full.yaml"
+      ],
+      "healthcheck_declared": true,
+      "ports_unresolved": [
+        "${CHECKOUT_PORT}"
+      ],
+      "runtime_observed": false
+    },
+    {
+      "id": "currency",
+      "group": "core",
+      "selected_for_day1": true,
+      "source_files": [
+        "compose.yaml"
+      ],
+      "healthcheck_declared": true,
+      "ports_unresolved": [
+        "${CURRENCY_PORT}"
+      ],
+      "runtime_observed": false
+    },
+    {
+      "id": "email",
+      "group": "core",
+      "selected_for_day1": true,
+      "source_files": [
+        "compose.yaml"
+      ],
+      "healthcheck_declared": true,
+      "ports_unresolved": [
+        "${EMAIL_PORT}"
+      ],
+      "runtime_observed": false
+    },
+    {
+      "id": "frontend",
+      "group": "core",
+      "selected_for_day1": true,
+      "source_files": [
+        "compose.yaml"
+      ],
+      "healthcheck_declared": true,
+      "ports_unresolved": [
+        "${FRONTEND_PORT}"
+      ],
+      "runtime_observed": false
+    },
+    {
+      "id": "frontend-proxy",
+      "group": "core",
+      "selected_for_day1": true,
+      "source_files": [
+        "compose.yaml",
+        "compose.observability.yaml",
+        "compose.agent.yaml"
+      ],
+      "healthcheck_declared": true,
+      "ports_unresolved": [
+        "${ENVOY_PORT}:${ENVOY_PORT}",
+        "${ENVOY_ADMIN_PORT}:${ENVOY_ADMIN_PORT}"
+      ],
+      "runtime_observed": false
+    },
+    {
+      "id": "image-provider",
+      "group": "core",
+      "selected_for_day1": true,
+      "source_files": [
+        "compose.yaml"
+      ],
+      "healthcheck_declared": true,
+      "ports_unresolved": [
+        "${IMAGE_PROVIDER_PORT}"
+      ],
+      "runtime_observed": false
+    },
+    {
+      "id": "load-generator",
+      "group": "core",
+      "selected_for_day1": true,
+      "source_files": [
+        "compose.yaml",
+        "compose.agent.yaml"
+      ],
+      "healthcheck_declared": true,
+      "ports_unresolved": [
+        "${LOCUST_WEB_PORT}"
+      ],
+      "runtime_observed": false
+    },
+    {
+      "id": "payment",
+      "group": "core",
+      "selected_for_day1": true,
+      "source_files": [
+        "compose.yaml"
+      ],
+      "healthcheck_declared": true,
+      "ports_unresolved": [
+        "${PAYMENT_PORT}"
+      ],
+      "runtime_observed": false
+    },
+    {
+      "id": "product-catalog",
+      "group": "core",
+      "selected_for_day1": true,
+      "source_files": [
+        "compose.yaml",
+        "compose.observability.yaml"
+      ],
+      "healthcheck_declared": true,
+      "ports_unresolved": [
+        "${PRODUCT_CATALOG_PORT}"
+      ],
+      "runtime_observed": false
+    },
+    {
+      "id": "quote",
+      "group": "core",
+      "selected_for_day1": true,
+      "source_files": [
+        "compose.yaml"
+      ],
+      "healthcheck_declared": true,
+      "ports_unresolved": [
+        "${QUOTE_PORT}"
+      ],
+      "runtime_observed": false
+    },
+    {
+      "id": "recommendation",
+      "group": "core",
+      "selected_for_day1": true,
+      "source_files": [
+        "compose.yaml"
+      ],
+      "healthcheck_declared": true,
+      "ports_unresolved": [
+        "${RECOMMENDATION_PORT}"
+      ],
+      "runtime_observed": false
+    },
+    {
+      "id": "shipping",
+      "group": "core",
+      "selected_for_day1": true,
+      "source_files": [
+        "compose.yaml"
+      ],
+      "healthcheck_declared": true,
+      "ports_unresolved": [
+        "${SHIPPING_PORT}"
+      ],
+      "runtime_observed": false
+    },
+    {
+      "id": "flagd",
+      "group": "core",
+      "selected_for_day1": true,
+      "source_files": [
+        "compose.yaml"
+      ],
+      "healthcheck_declared": false,
+      "ports_unresolved": [
+        "${FLAGD_PORT}",
+        "${FLAGD_OFREP_PORT}"
+      ],
+      "runtime_observed": false
+    },
+    {
+      "id": "flagd-ui",
+      "group": "core",
+      "selected_for_day1": true,
+      "source_files": [
+        "compose.yaml"
+      ],
+      "healthcheck_declared": true,
+      "ports_unresolved": [
+        "${FLAGD_UI_PORT}"
+      ],
+      "runtime_observed": false
+    },
+    {
+      "id": "telemetry-docs",
+      "group": "core",
+      "selected_for_day1": true,
+      "source_files": [
+        "compose.yaml"
+      ],
+      "healthcheck_declared": true,
+      "ports_unresolved": [
+        "${TELEMETRY_DOCS_PORT}"
+      ],
+      "runtime_observed": false
+    },
+    {
+      "id": "astronomy-db",
+      "group": "core",
+      "selected_for_day1": true,
+      "source_files": [
+        "compose.yaml"
+      ],
+      "healthcheck_declared": true,
+      "ports_unresolved": [
+        "${POSTGRES_PORT}"
+      ],
+      "runtime_observed": false
+    },
+    {
+      "id": "valkey-cart",
+      "group": "core",
+      "selected_for_day1": true,
+      "source_files": [
+        "compose.yaml"
+      ],
+      "healthcheck_declared": true,
+      "ports_unresolved": [
+        "${VALKEY_PORT}"
+      ],
+      "runtime_observed": false
+    },
+    {
+      "id": "otel-collector",
+      "group": "core",
+      "selected_for_day1": true,
+      "source_files": [
+        "compose.yaml",
+        "compose.observability.yaml",
+        "compose.full.yaml"
+      ],
+      "healthcheck_declared": false,
+      "ports_unresolved": [
+        "${OTEL_COLLECTOR_PORT_GRPC}",
+        "${OTEL_COLLECTOR_PORT_HTTP}"
+      ],
+      "runtime_observed": false
+    },
+    {
+      "id": "jaeger",
+      "group": "observability",
+      "selected_for_day1": true,
+      "source_files": [
+        "compose.observability.yaml"
+      ],
+      "healthcheck_declared": false,
+      "ports_unresolved": [
+        "${JAEGER_UI_PORT}",
+        "${JAEGER_GRPC_PORT}"
+      ],
+      "runtime_observed": false
+    },
+    {
+      "id": "grafana",
+      "group": "observability",
+      "selected_for_day1": true,
+      "source_files": [
+        "compose.observability.yaml"
+      ],
+      "healthcheck_declared": false,
+      "ports_unresolved": [
+        "${GRAFANA_PORT}"
+      ],
+      "runtime_observed": false
+    },
+    {
+      "id": "prometheus",
+      "group": "observability",
+      "selected_for_day1": true,
+      "source_files": [
+        "compose.observability.yaml"
+      ],
+      "healthcheck_declared": false,
+      "ports_unresolved": [
+        "${PROMETHEUS_PORT}:${PROMETHEUS_PORT}"
+      ],
+      "runtime_observed": false
+    },
+    {
+      "id": "opensearch",
+      "group": "observability",
+      "selected_for_day1": true,
+      "source_files": [
+        "compose.observability.yaml"
+      ],
+      "healthcheck_declared": true,
+      "ports_unresolved": [
+        "9200"
+      ],
+      "runtime_observed": false
+    },
+    {
+      "id": "opamp-server",
+      "group": "observability",
+      "selected_for_day1": true,
+      "source_files": [
+        "compose.observability.yaml"
+      ],
+      "healthcheck_declared": true,
+      "ports_unresolved": [],
+      "runtime_observed": false
+    }
+  ],
+  "edges": [
+    {
+      "from": "ad",
+      "to": "otel-collector",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "ad",
+      "to": "flagd",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "cart",
+      "to": "valkey-cart",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_healthy"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "cart",
+      "to": "otel-collector",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "cart",
+      "to": "flagd",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "checkout",
+      "to": "cart",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "checkout",
+      "to": "currency",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_healthy"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "checkout",
+      "to": "email",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_healthy"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "checkout",
+      "to": "payment",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_healthy"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "checkout",
+      "to": "product-catalog",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "checkout",
+      "to": "shipping",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "checkout",
+      "to": "otel-collector",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "checkout",
+      "to": "flagd",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "currency",
+      "to": "otel-collector",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "email",
+      "to": "otel-collector",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "frontend",
+      "to": "ad",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_healthy"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "frontend",
+      "to": "cart",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "frontend",
+      "to": "checkout",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "frontend",
+      "to": "currency",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_healthy"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "frontend",
+      "to": "product-catalog",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "frontend",
+      "to": "quote",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_healthy"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "frontend",
+      "to": "recommendation",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_healthy"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "frontend",
+      "to": "shipping",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "frontend",
+      "to": "otel-collector",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "frontend",
+      "to": "image-provider",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_healthy"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "frontend",
+      "to": "flagd",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "frontend-proxy",
+      "to": "frontend",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_healthy"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "frontend-proxy",
+      "to": "load-generator",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "frontend-proxy",
+      "to": "flagd-ui",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_healthy"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "frontend-proxy",
+      "to": "telemetry-docs",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_healthy"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "image-provider",
+      "to": "otel-collector",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "load-generator",
+      "to": "frontend",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_healthy"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "load-generator",
+      "to": "flagd",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "payment",
+      "to": "otel-collector",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "payment",
+      "to": "flagd",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "product-catalog",
+      "to": "otel-collector",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "product-catalog",
+      "to": "flagd",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "product-catalog",
+      "to": "astronomy-db",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_healthy"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "quote",
+      "to": "otel-collector",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "recommendation",
+      "to": "product-catalog",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "recommendation",
+      "to": "otel-collector",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "recommendation",
+      "to": "flagd",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "shipping",
+      "to": "otel-collector",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "shipping",
+      "to": "flagd",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "flagd-ui",
+      "to": "otel-collector",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "flagd-ui",
+      "to": "flagd",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "frontend-proxy",
+      "to": "jaeger",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.observability.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "observability",
+      "runtime_observed": false
+    },
+    {
+      "from": "frontend-proxy",
+      "to": "grafana",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.observability.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "observability",
+      "runtime_observed": false
+    },
+    {
+      "from": "frontend-proxy",
+      "to": "opamp-server",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.observability.yaml",
+      "condition": {
+        "condition": "service_healthy"
+      },
+      "layer": "observability",
+      "runtime_observed": false
+    },
+    {
+      "from": "otel-collector",
+      "to": "jaeger",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.observability.yaml",
+      "condition": {
+        "condition": "service_started"
+      },
+      "layer": "observability",
+      "runtime_observed": false
+    },
+    {
+      "from": "otel-collector",
+      "to": "opensearch",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.observability.yaml",
+      "condition": {
+        "condition": "service_healthy"
+      },
+      "layer": "observability",
+      "runtime_observed": false
+    },
+    {
+      "from": "otel-collector",
+      "to": "opamp-server",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.observability.yaml",
+      "condition": {
+        "condition": "service_healthy"
+      },
+      "layer": "observability",
+      "runtime_observed": false
+    },
+    {
+      "from": "cart",
+      "to": "opamp-server",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.observability.yaml",
+      "condition": {
+        "condition": "service_healthy"
+      },
+      "layer": "observability",
+      "runtime_observed": false
+    },
+    {
+      "from": "product-catalog",
+      "to": "opamp-server",
+      "relationship": "startup_dependency",
+      "evidence_type": "declared",
+      "source": "compose.observability.yaml",
+      "condition": {
+        "condition": "service_healthy"
+      },
+      "layer": "observability",
+      "runtime_observed": false
+    },
+    {
+      "from": "frontend",
+      "to": "ad",
+      "relationship": "application_call",
+      "evidence_type": "inferred",
+      "source": "compose.yaml and .env connection settings; official architecture; relevant service code",
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "frontend",
+      "to": "cart",
+      "relationship": "application_call",
+      "evidence_type": "inferred",
+      "source": "compose.yaml and .env connection settings; official architecture; relevant service code",
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "frontend",
+      "to": "currency",
+      "relationship": "application_call",
+      "evidence_type": "inferred",
+      "source": "compose.yaml and .env connection settings; official architecture; relevant service code",
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "frontend",
+      "to": "checkout",
+      "relationship": "application_call",
+      "evidence_type": "inferred",
+      "source": "compose.yaml and .env connection settings; official architecture; relevant service code",
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "frontend",
+      "to": "product-catalog",
+      "relationship": "application_call",
+      "evidence_type": "inferred",
+      "source": "compose.yaml and .env connection settings; official architecture; relevant service code",
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "frontend",
+      "to": "recommendation",
+      "relationship": "application_call",
+      "evidence_type": "inferred",
+      "source": "compose.yaml and .env connection settings; official architecture; relevant service code",
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "frontend",
+      "to": "shipping",
+      "relationship": "application_call",
+      "evidence_type": "inferred",
+      "source": "compose.yaml and .env connection settings; official architecture; relevant service code",
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "checkout",
+      "to": "cart",
+      "relationship": "application_call",
+      "evidence_type": "inferred",
+      "source": "compose.yaml and .env connection settings; official architecture; relevant service code",
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "checkout",
+      "to": "currency",
+      "relationship": "application_call",
+      "evidence_type": "inferred",
+      "source": "compose.yaml and .env connection settings; official architecture; relevant service code",
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "checkout",
+      "to": "email",
+      "relationship": "application_call",
+      "evidence_type": "inferred",
+      "source": "compose.yaml and .env connection settings; official architecture; relevant service code",
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "checkout",
+      "to": "payment",
+      "relationship": "application_call",
+      "evidence_type": "inferred",
+      "source": "compose.yaml and .env connection settings; official architecture; relevant service code",
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "checkout",
+      "to": "product-catalog",
+      "relationship": "application_call",
+      "evidence_type": "inferred",
+      "source": "compose.yaml and .env connection settings; official architecture; relevant service code",
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "checkout",
+      "to": "shipping",
+      "relationship": "application_call",
+      "evidence_type": "inferred",
+      "source": "compose.yaml and .env connection settings; official architecture; relevant service code",
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "recommendation",
+      "to": "product-catalog",
+      "relationship": "application_call",
+      "evidence_type": "inferred",
+      "source": "compose.yaml and .env connection settings; official architecture; relevant service code",
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "shipping",
+      "to": "quote",
+      "relationship": "application_call",
+      "evidence_type": "inferred",
+      "source": "compose.yaml and .env connection settings; official architecture; relevant service code",
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "cart",
+      "to": "valkey-cart",
+      "relationship": "application_call",
+      "evidence_type": "inferred",
+      "source": "compose.yaml and .env connection settings; official architecture; relevant service code",
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "product-catalog",
+      "to": "astronomy-db",
+      "relationship": "application_call",
+      "evidence_type": "inferred",
+      "source": "compose.yaml and .env connection settings; official architecture; relevant service code",
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "load-generator",
+      "to": "frontend-proxy",
+      "relationship": "application_call",
+      "evidence_type": "inferred",
+      "source": "compose.yaml and .env connection settings; official architecture; relevant service code",
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "frontend-proxy",
+      "to": "frontend",
+      "relationship": "application_call",
+      "evidence_type": "inferred",
+      "source": "compose.yaml and .env connection settings; official architecture; relevant service code",
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "frontend-proxy",
+      "to": "image-provider",
+      "relationship": "application_call",
+      "evidence_type": "inferred",
+      "source": "compose.yaml and .env connection settings; official architecture; relevant service code",
+      "layer": "core",
+      "runtime_observed": false
+    },
+    {
+      "from": "otel-collector",
+      "to": "prometheus",
+      "relationship": "metrics_export",
+      "evidence_type": "inferred",
+      "source": "src/otel-collector/otelcol-config-observability.yml",
+      "layer": "observability",
+      "runtime_observed": false
+    },
+    {
+      "from": "otel-collector",
+      "to": "jaeger",
+      "relationship": "traces_export",
+      "evidence_type": "inferred",
+      "source": "src/otel-collector/otelcol-config-observability.yml",
+      "layer": "observability",
+      "runtime_observed": false
+    },
+    {
+      "from": "otel-collector",
+      "to": "opensearch",
+      "relationship": "logs_export",
+      "evidence_type": "inferred",
+      "source": "src/otel-collector/otelcol-config-observability.yml",
+      "layer": "observability",
+      "runtime_observed": false
+    },
+    {
+      "from": "otel-collector",
+      "to": "opamp-server",
+      "relationship": "status_report",
+      "evidence_type": "inferred",
+      "source": "src/otel-collector/otelcol-config-observability.yml",
+      "layer": "observability",
+      "runtime_observed": false
+    }
+  ]
+}
