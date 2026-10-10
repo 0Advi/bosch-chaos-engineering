@@ -1,0 +1,9 @@
+[
+  {"why": "duration above hard cap", "patch": {"duration_seconds": 120}},
+  {"why": "unknown field smuggles a command", "patch": {"command": "docker rm -f payment"}},
+  {"why": "capability id with path characters", "patch": {"capability_id": "../../etc/passwd"}},
+  {"why": "wrong schema version", "patch": {"schema_version": "0.9"}},
+  {"why": "empty expected impact", "patch": {"expected_impact": ""}},
+  {"why": "unknown requester", "patch": {"requested_by": "root"}},
+  {"why": "nested parameter object", "patch": {"parameters": {"failure_rate": {"cmd": "x"}}}}
+]

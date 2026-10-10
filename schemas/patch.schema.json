@@ -1,0 +1,88 @@
+{
+  "$id": "bosch-chaos/patch/1.0.0",
+  "additionalProperties": false,
+  "properties": {
+    "affected_files": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Affected Files",
+      "type": "array"
+    },
+    "approved_diff_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Approved Diff Sha256"
+    },
+    "base_revision": {
+      "pattern": "^[0-9a-f]{40}$",
+      "title": "Base Revision",
+      "type": "string"
+    },
+    "diff_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Diff Sha256",
+      "type": "string"
+    },
+    "image_digests": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "default": {},
+      "title": "Image Digests",
+      "type": "object"
+    },
+    "patch_id": {
+      "pattern": "^[a-z0-9][a-z0-9-]{1,63}$",
+      "title": "Patch Id",
+      "type": "string"
+    },
+    "rationale": {
+      "title": "Rationale",
+      "type": "string"
+    },
+    "rollback_images": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "default": {},
+      "title": "Rollback Images",
+      "type": "object"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "enum": [
+        "1.0.0"
+      ],
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "tests": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Tests",
+      "type": "array"
+    }
+  },
+  "required": [
+    "patch_id",
+    "base_revision",
+    "diff_sha256",
+    "affected_files",
+    "rationale"
+  ],
+  "title": "Patch",
+  "type": "object"
+}

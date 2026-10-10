@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0.0",
+  "run_id": "run-0001",
+  "service": "checkout",
+  "edge": "checkout->payment",
+  "category": "connectivity",
+  "affected_paths": ["POST /api/checkout"],
+  "cited_observations": ["obs-0004", "obs-0005"],
+  "alternatives": ["payment process down (health probe contradicts)"],
+  "uncertainty": "low",
+  "next_action": "compare payment health and checkout RPC status codes"
+}

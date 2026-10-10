@@ -1,0 +1,118 @@
+{
+  "$defs": {
+    "PhaseSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "attempts": {
+          "minimum": 0,
+          "title": "Attempts",
+          "type": "integer"
+        },
+        "missing_samples": {
+          "minimum": 0,
+          "title": "Missing Samples",
+          "type": "integer"
+        },
+        "p95_latency_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P95 Latency Ms"
+        },
+        "successes": {
+          "minimum": 0,
+          "title": "Successes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "attempts",
+        "successes",
+        "missing_samples"
+      ],
+      "title": "PhaseSummary",
+      "type": "object"
+    }
+  },
+  "$id": "bosch-chaos/comparison/1.0.0",
+  "additionalProperties": false,
+  "properties": {
+    "baseline": {
+      "$ref": "#/$defs/PhaseSummary"
+    },
+    "comparison_id": {
+      "pattern": "^[a-z0-9][a-z0-9-]{1,63}$",
+      "title": "Comparison Id",
+      "type": "string"
+    },
+    "conclusive": {
+      "title": "Conclusive",
+      "type": "boolean"
+    },
+    "differences": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Differences",
+      "type": "array"
+    },
+    "fault": {
+      "$ref": "#/$defs/PhaseSummary"
+    },
+    "limitations": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Limitations",
+      "type": "array"
+    },
+    "original_run_id": {
+      "pattern": "^[a-z0-9][a-z0-9-]{1,63}$",
+      "title": "Original Run Id",
+      "type": "string"
+    },
+    "recovery": {
+      "$ref": "#/$defs/PhaseSummary"
+    },
+    "replay_run_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z0-9][a-z0-9-]{1,63}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Replay Run Id"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "enum": [
+        "1.0.0"
+      ],
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "comparison_id",
+    "original_run_id",
+    "baseline",
+    "fault",
+    "recovery",
+    "conclusive"
+  ],
+  "title": "Comparison",
+  "type": "object"
+}

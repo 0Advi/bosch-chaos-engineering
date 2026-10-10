@@ -1,0 +1,180 @@
+schema_version: "1.0.0"
+# Typed capability catalog (P0-04). Supersedes config/payment_scenarios.proposed.json
+# for the controller. adapter_config is operator-owned: plans and models can only
+# choose the declared parameters. Nothing here runs live unless
+# config/execution_policy.yaml lists the capability and the sandbox is approved.
+catalog_version: "2026-10-10.1"
+common:
+  prerequisites: &prereq
+    - dedicated_verified_sandbox
+    - stable_measured_baseline
+    - fresh_correlated_observations
+  protected_probes: &protected ["GET /", "GET /api/products", "GET /api/cart", "POST /api/cart"]
+
+capabilities:
+  # ------------------------------------------------ 3) payment unavailable
+  - id: payment-unreachable
+    title: Checkout cannot reach the payment service
+    family: payment_unavailable
+    adapter: flag
+    adapter_version: "1"
+    execution: preview
+    target_service: checkout
+    affected_dependency: payment
+    adapter_config: {flag: paymentUnreachable, fault_variant: "on"}
+    prerequisites: [dedicated_verified_sandbox, stable_measured_baseline, fresh_correlated_observations, isolated_flag_storage]
+    duration: {default_seconds: 15, max_seconds: 30}
+    observations: [checkout_http_status, checkout_rpc_error, payment_health, cart_retained]
+    affected_probes: ["POST /api/checkout"]
+    protected_probes: *protected
+    expected_evidence: [outgoing_charge_connection_error, checkout_failure, payment_can_remain_healthy]
+    restoration: restore exact prior paymentUnreachable variant, then verify a valid checkout succeeds
+    success_criteria: [fault_observed_on_checkout, protected_probes_within_policy, recovery_checkout_succeeds]
+
+  - id: payment-handler-failure
+    title: Payment Charge handler rejects requests
+    family: payment_unavailable
+    adapter: flag
+    adapter_version: "1"
+    execution: preview
+    target_service: payment
+    adapter_config: {flag: paymentFailure}
+    parameters:
+      - {name: failure_rate, type: enum, choices: ["10%", "25%", "50%", "75%", "100%"],
+         default: "100%", description: paymentFailure variant to apply}
+    prerequisites: [dedicated_verified_sandbox, stable_measured_baseline, fresh_correlated_observations, isolated_flag_storage]
+    duration: {default_seconds: 15, max_seconds: 30}
+    observations: [checkout_http_status, payment_error_span, cart_retained]
+    affected_probes: ["POST /api/checkout"]
+    protected_probes: *protected
+    expected_evidence: [payment_error_span, charge_exception_invalid_token, checkout_failure, payment_health_remains_serving]
+    restoration: restore exact prior paymentFailure variant, then verify a valid checkout succeeds
+    success_criteria: [fault_observed_on_checkout, protected_probes_within_policy, recovery_checkout_succeeds]
+
+  - id: payment-process-outage
+    title: Stop the sandbox payment container
+    family: payment_unavailable
+    adapter: container_stop
+    adapter_version: "0"
+    execution: disabled
+    disabled_reason: X-01 needs the watchdog (P2-03) before a container may be stopped
+    target_service: payment
+    prerequisites: [dedicated_verified_sandbox, stable_measured_baseline, fresh_correlated_observations, independent_watchdog]
+    duration: {default_seconds: 15, max_seconds: 30}
+    observations: [checkout_http_status, payment_container_state, payment_health]
+    affected_probes: ["POST /api/checkout"]
+    protected_probes: *protected
+    expected_evidence: [payment_container_exited, checkout_failure]
+    restoration: start the same container ID and verify health and a valid checkout
+    success_criteria: [container_restarted, recovery_checkout_succeeds]
+
+  # ------------------------------------- 1) currency or amount mismatch
+  - id: checkout-currency-mismatch
+    title: Checkout with a currency the currency service cannot convert
+    family: currency_amount_mismatch
+    adapter: checkout_request_fixture
+    adapter_version: "1"
+    execution: preview
+    target_service: checkout
+    affected_dependency: currency
+    adapter_config: {product_id: 66VCHSJNUP, quantity: 1}
+    parameters:
+      - {name: currency_code, type: enum, choices: ["XXX", "ZZZ", "usd", ""],
+         default: "XXX", description: user_currency sent to PlaceOrder}
+      - {name: attempts, type: int, minimum: 1, maximum: 5, default: 3,
+         description: "sequential synthetic checkouts, each with a fresh cart"}
+    prerequisites: *prereq
+    duration: {default_seconds: 0, max_seconds: 30}
+    observations: [checkout_http_status, currency_convert_error, payment_not_called, cart_retained]
+    affected_probes: ["POST /api/checkout"]
+    protected_probes: *protected
+    expected_evidence: [currency_convert_error, checkout_internal_error, no_charge_span, cart_retained]
+    restoration: none required (request fixture); verify a valid USD checkout succeeds
+    success_criteria: [checkout_rejected_before_charge, recovery_checkout_succeeds]
+
+  - id: payment-amount-mismatch
+    title: Send an inconsistent Money amount directly to payment Charge
+    family: currency_amount_mismatch
+    adapter: payment_grpc_fixture
+    adapter_version: "1"
+    execution: preview
+    target_service: payment
+    adapter_config:
+      grpcurl_image: fullstorydev/grpcurl:v1.9.1
+      endpoint: payment:50051
+      method: oteldemo.PaymentService/Charge
+    parameters:
+      - {name: mode, type: enum, default: negative_amount,
+         choices: [negative_amount, nanos_out_of_range, sign_mismatch, unknown_currency, zero_amount],
+         description: which Money invariant from demo.proto to violate}
+    prerequisites: *prereq
+    duration: {default_seconds: 0, max_seconds: 30}
+    observations: [charge_rpc_status, transaction_id_returned, payment_log_amount]
+    affected_probes: ["grpc payment Charge"]
+    protected_probes: *protected
+    expected_evidence: [charge_accepted_or_rejected, payment_span_amount_attributes]
+    restoration: none required (synthetic_request baggage set; no state mutated)
+    success_criteria: [charge_outcome_recorded, recovery_checkout_succeeds]
+
+  # ------------------------------------------ 2) duplicate payment requests
+  - id: checkout-duplicate-submit
+    title: Submit the same checkout concurrently for one cart
+    family: duplicate_payment
+    adapter: checkout_request_fixture
+    adapter_version: "1"
+    execution: preview
+    target_service: checkout
+    affected_dependency: payment
+    adapter_config: {product_id: 66VCHSJNUP, quantity: 1, currency_code: USD}
+    parameters:
+      - {name: concurrency, type: int, minimum: 2, maximum: 5, default: 2,
+         description: "identical PlaceOrder requests fired at once for one user/cart"}
+    prerequisites: *prereq
+    duration: {default_seconds: 0, max_seconds: 30}
+    observations: [order_ids, transaction_ids, payment_went_through_logs, cart_state]
+    affected_probes: ["POST /api/checkout"]
+    protected_probes: *protected
+    expected_evidence: [orders_accepted_per_logical_cart, charge_spans_per_logical_cart]
+    restoration: none required; carts are synthetic and emptied by checkout
+    success_criteria: [accepted_order_count_recorded, recovery_checkout_succeeds]
+
+  - id: payment-charge-replay
+    title: Replay one identical Charge request directly to payment
+    family: duplicate_payment
+    adapter: payment_grpc_fixture
+    adapter_version: "1"
+    execution: preview
+    target_service: payment
+    adapter_config:
+      grpcurl_image: fullstorydev/grpcurl:v1.9.1
+      endpoint: payment:50051
+      method: oteldemo.PaymentService/Charge
+    parameters:
+      - {name: mode, type: enum, choices: [valid_usd], default: valid_usd, description: payload shape}
+      - {name: repeat, type: int, minimum: 2, maximum: 5, default: 2, description: identical calls}
+    prerequisites: *prereq
+    duration: {default_seconds: 0, max_seconds: 30}
+    observations: [charge_rpc_status, transaction_ids]
+    affected_probes: ["grpc payment Charge"]
+    protected_probes: *protected
+    expected_evidence: [distinct_transaction_ids_for_identical_requests]
+    restoration: none required (synthetic_request baggage set)
+    success_criteria: [all_transaction_ids_recorded]
+
+  # ------------------------------------------------- known, unsupported
+  - id: payment-delay-or-response-loss
+    title: Delay or drop the Charge response
+    family: payment_unavailable
+    adapter: payment_grpc_fixture
+    adapter_version: "0"
+    execution: disabled
+    disabled_reason: X-02 needs a scoped proxy/test hook; no adapter exists
+    target_service: payment
+    prerequisites: [dedicated_verified_sandbox, stable_measured_baseline, fresh_correlated_observations, scoped_proxy]
+    duration: {default_seconds: 15, max_seconds: 30}
+    observations: [checkout_latency, deadline_exceeded]
+    affected_probes: ["POST /api/checkout"]
+    protected_probes: *protected
+    expected_evidence: [deadline_exceeded]
+    restoration: remove proxy
+    success_criteria: [not_defined]
