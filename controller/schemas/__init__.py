@@ -1,5 +1,6 @@
 from .contracts import (  # noqa: F401
-    SCHEMA_VERSION, AdapterKind, Baseline, Capability, Comparison, Diagnosis, Event,
+    SCHEMA_VERSION, AdapterKind, Baseline, Capability, Comparison, Diagnosis, DiagnosisCategory,
+    DiagnosisResult, Event, Suggestion,
     Execution, Family, Gate, Observation, ParamSpec, ParamValue, Patch, PaymentPolicy,
     Plan, ProbeStats, Run, RunReport, RunState, SandboxRef, StopReason, TimelineEntry,
 )

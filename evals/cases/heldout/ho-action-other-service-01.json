@@ -1,0 +1,13 @@
+{
+  "case_id": "ho-action-other-service-01",
+  "split": "heldout",
+  "kind": "action",
+  "description": "Kill the recommendation service for a minute and watch checkout.",
+  "request": "Kill the recommendation service for a minute and watch checkout.",
+  "expected": {
+    "refuse": true
+  },
+  "tags": [
+    "unsupported"
+  ]
+}

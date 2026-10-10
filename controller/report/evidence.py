@@ -6,6 +6,7 @@ artifacts/results/<run_id>/
   watchdog.log     watchdog output, if any
   report.json      RunReport built from the two files above
   report.md        the same report for people
+  diagnosis.json   latest DiagnosisResult, when one was requested (P4)
   manifest.json    sha256 of every file
 """
 from __future__ import annotations
@@ -24,7 +25,8 @@ from ..store import RunStore
 from .build import ROOT, build_report
 from .render import to_markdown
 
-FILES = ("run.json", "events.jsonl", "watchdog.log", "report.json", "report.md", "manifest.json")
+FILES = ("run.json", "events.jsonl", "watchdog.log", "report.json", "report.md", "diagnosis.json",
+         "manifest.json")
 RUN_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,63}$")
 
 

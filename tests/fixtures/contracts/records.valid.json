@@ -363,5 +363,40 @@
       "last_seq": 35,
       "events_sha256": "eae8db084012bd9e5593a4e47343ead60bdf3814f9267b9143d1814a305346c1"
     }
+  },
+  "DiagnosisResult": {
+    "schema_version": "1.0.0",
+    "result_id": "dx-2ad809e2ea2e",
+    "run_id": "run-20261010-090000-abc123",
+    "diagnoser": "baseline",
+    "status": "grounded",
+    "diagnosis": {
+      "schema_version": "1.0.0",
+      "run_id": "run-20261010-090000-abc123",
+      "service": "checkout",
+      "edge": "checkout->payment",
+      "category": "connectivity",
+      "affected_paths": [
+        "POST /api/checkout"
+      ],
+      "cited_observations": [
+        "ev-008",
+        "ev-007"
+      ],
+      "alternatives": [],
+      "uncertainty": "medium",
+      "next_action": "check the payment address/connectivity used by checkout"
+    },
+    "suggestions": [],
+    "requested_observations": [],
+    "problems": [],
+    "evidence_sha256": "9c9dbf253910a630b1290792360e247c4b0e3c76caa65e5f28cea2d80ca9525f",
+    "evidence_items": 29,
+    "model_requested": null,
+    "model_served": null,
+    "prompt_version": null,
+    "usage": {},
+    "latency_s": null,
+    "provider_error": null
   }
 }

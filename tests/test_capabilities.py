@@ -82,8 +82,10 @@ def test_adapter_config_hidden_from_model(tools):
     assert out["ok"] and "adapter_config" not in out["result"]
 
 
-def test_execution_tools_unavailable_in_p0(tools):
-    assert tools.dispatch("run_plan", {"run_id": "run-1"})["error"] == "NOT_AVAILABLE_IN_PHASE"
+def test_default_registry_cannot_execute_or_run_commands(tools):
+    plan = propose(tools, "payment-unreachable")["result"]
+    assert tools.dispatch("run_plan", {"plan": plan, "live": True})["error"] == "MUTATION_NOT_PERMITTED"
+    assert tools.dispatch("abort_run", {"run_id": "run-1"})["error"] == "MUTATION_NOT_PERMITTED"
     assert tools.dispatch("shell", {"cmd": "ls"})["error"] == "UNKNOWN_TOOL"
 
 

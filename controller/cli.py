@@ -1,5 +1,5 @@
 """Operator CLI: python -m controller.cli {capabilities,preflight,plan,run,abort,status,events,
-reconcile,restore,report,serve,probe,baseline,compare-baselines,derive-policy}"""
+reconcile,restore,report,diagnose,agent,serve,probe,baseline,compare-baselines,derive-policy}"""
 from __future__ import annotations
 
 import argparse
@@ -110,6 +110,15 @@ def main(argv=None) -> int:
     events.add_argument("run_id")
     events.add_argument("--after", type=int, default=0)
     sub.add_parser("reconcile", help="restore runs whose controller died (run after a restart)")
+    dx = sub.add_parser("diagnose", help="blind, evidence-grounded diagnosis of a finished run (P4-03)")
+    dx.add_argument("run_id")
+    dx.add_argument("--diagnoser", choices=["model", "baseline"], default="model")
+    dx.add_argument("--with-telemetry", action="store_true",
+                    help="enrich evidence with Jaeger traces of fault-window checkouts")
+    agent = sub.add_parser("agent", help="ask the tool-using agent (read-only unless --allow-mutation)")
+    agent.add_argument("request")
+    agent.add_argument("--allow-mutation", action="store_true",
+                       help="let the agent start/abort runs through the controller's own gates")
     report = sub.add_parser("report", help="export evidence and print the run report (P3-01)")
     report.add_argument("run_id")
     report.add_argument("--format", choices=["md", "json"], default="md")
@@ -150,6 +159,22 @@ def main(argv=None) -> int:
                     args.out.write_text(json.dumps(out["result"], indent=2) + "\n")
         elif args.cmd == "run":
             out = runner.execute(Plan.model_validate_json(args.plan_file.read_text()), live=args.live)
+        elif args.cmd == "diagnose":
+            from .agent.providers import AnthropicProvider
+            from .agent.service import diagnose_run
+            telemetry = Telemetry(endpoints.jaeger_api(), endpoints.metrics_url()) if args.with_telemetry else None
+            provider = AnthropicProvider() if args.diagnoser == "model" else None
+            result = diagnose_run(RunStore(runner.DB_PATH), args.run_id, runner.RESULTS, args.diagnoser,
+                                  provider, telemetry)
+            out = {"ok": result.status != "failed", "diagnosis": result.model_dump(mode="json")}
+        elif args.cmd == "agent":
+            from .agent.providers import AnthropicProvider
+            from .agent.session import run_session
+            registry = ToolRegistry(controller=ControllerAPI() if args.allow_mutation else None,
+                                    allow_mutation=args.allow_mutation)
+            session = run_session(args.request, AnthropicProvider(), registry)
+            out = {"ok": session.ok, "answer": session.text, "tool_calls": session.tool_calls,
+                   "usage": session.usage, "error": session.error}
         elif args.cmd == "report":
             store = RunStore(runner.DB_PATH)
             directory = export_run(store, args.run_id, runner.RESULTS)

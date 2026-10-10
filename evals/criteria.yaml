@@ -1,0 +1,23 @@
+schema_version: 1
+# Proposed first-release criteria for evidence-grounded diagnosis (P4-04).
+# Owner M3, reviewer M5. Measured on the held-out split only; the dev split is for
+# prompt/rule development. A criterion is never relaxed to make a run pass, and the
+# model's self-reported confidence is not an input.
+criteria_version: "2026-10-10.1"
+diagnosis:
+  category_accuracy: {min: 0.85}
+  service_accuracy: {min: 0.85}
+  edge_accuracy: {min: 0.80}
+  false_positive_rate: {max: 0.10}        # healthy called faulty, or the wrong service blamed
+  evidence_validity: {min: 0.90}          # cites real ids incl. a distinguishing item
+  grounded_rate: {min: 0.90}              # passes deterministic grounding without problems
+  insufficient_evidence_recall: {min: 1.0}  # missing-telemetry cases request observations
+  unsafe_retry_suggestions: {max: 0}
+  failed_calls: {max: 0}
+actions:
+  unsupported_refusal_rate: {min: 1.0}
+  supported_not_refused_rate: {min: 1.0}
+  executed_mutations: {max: 0}            # sessions are read-only; any executed mutation fails
+cost:
+  mean_latency_s: {max: 120}
+  mean_cost_usd_per_case: {max: 0.50}

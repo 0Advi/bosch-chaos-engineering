@@ -1,0 +1,374 @@
+{
+  "case_id": "dev-connectivity-01",
+  "split": "dev",
+  "kind": "diagnosis",
+  "description": "checkout cannot reach payment (bad address)",
+  "bundle": {
+    "items": [
+      {
+        "id": "ev-001",
+        "kind": "run_phase",
+        "at": "2026-10-10T08:59:41+00:00",
+        "data": {
+          "state": "BASELINING"
+        }
+      },
+      {
+        "id": "ev-002",
+        "kind": "checkout_attempt",
+        "at": "2026-10-10T08:59:43+00:00",
+        "data": {
+          "phase": "baseline",
+          "http_status": 200,
+          "matched": true,
+          "latency_ms": 2805.0,
+          "cart_items_after": 0,
+          "error_code": null,
+          "trace_id": "00000000000000000000000000000002"
+        }
+      },
+      {
+        "id": "ev-003",
+        "kind": "protected_probes",
+        "at": "2026-10-10T08:59:43.500000+00:00",
+        "data": {
+          "phase": "baseline",
+          "samples": 4,
+          "failed": []
+        }
+      },
+      {
+        "id": "ev-004",
+        "kind": "run_phase",
+        "at": "2026-10-10T08:59:44.500000+00:00",
+        "data": {
+          "state": "READY"
+        }
+      },
+      {
+        "id": "ev-005",
+        "kind": "run_phase",
+        "at": "2026-10-10T08:59:45.500000+00:00",
+        "data": {
+          "state": "ARMED"
+        }
+      },
+      {
+        "id": "ev-006",
+        "kind": "run_phase",
+        "at": "2026-10-10T08:59:46.500000+00:00",
+        "data": {
+          "state": "RUNNING"
+        }
+      },
+      {
+        "id": "ev-007",
+        "kind": "checkout_attempt",
+        "at": "2026-10-10T08:59:48.500000+00:00",
+        "data": {
+          "phase": "fault",
+          "http_status": 500,
+          "matched": false,
+          "latency_ms": 210.0,
+          "cart_items_after": 1,
+          "error_code": null,
+          "trace_id": "00000000000000000000000000000007"
+        }
+      },
+      {
+        "id": "ev-008",
+        "kind": "trace",
+        "at": "2026-10-10T08:59:48.700000+00:00",
+        "data": {
+          "trace_id": "00000000000000000000000000000007",
+          "found": true,
+          "for": "ev-007",
+          "services": [
+            "checkout",
+            "frontend",
+            "frontend-proxy"
+          ],
+          "error_spans": [
+            {
+              "span_id": "4be7cb04894444e7",
+              "service": "checkout",
+              "operation": "oteldemo.CheckoutService/PlaceOrder",
+              "duration_ms": 12.0,
+              "error": true,
+              "rpc_code": 13,
+              "http_status": null,
+              "status_message": "failed to charge card: could not charge the card: rpc error: code = Unavailable desc = name resolver error: produced zero addresses"
+            }
+          ],
+          "charge_spans": [],
+          "transaction_ids": []
+        }
+      },
+      {
+        "id": "ev-009",
+        "kind": "protected_probes",
+        "at": "2026-10-10T08:59:49.200000+00:00",
+        "data": {
+          "phase": "fault",
+          "samples": 4,
+          "failed": []
+        }
+      },
+      {
+        "id": "ev-010",
+        "kind": "checkout_attempt",
+        "at": "2026-10-10T08:59:51.200000+00:00",
+        "data": {
+          "phase": "fault",
+          "http_status": 500,
+          "matched": false,
+          "latency_ms": 210.0,
+          "cart_items_after": 1,
+          "error_code": null,
+          "trace_id": "0000000000000000000000000000000a"
+        }
+      },
+      {
+        "id": "ev-011",
+        "kind": "trace",
+        "at": "2026-10-10T08:59:51.400000+00:00",
+        "data": {
+          "trace_id": "0000000000000000000000000000000a",
+          "found": true,
+          "for": "ev-010",
+          "services": [
+            "checkout",
+            "frontend",
+            "frontend-proxy"
+          ],
+          "error_spans": [
+            {
+              "span_id": "4be7cb04894444e7",
+              "service": "checkout",
+              "operation": "oteldemo.CheckoutService/PlaceOrder",
+              "duration_ms": 12.0,
+              "error": true,
+              "rpc_code": 13,
+              "http_status": null,
+              "status_message": "failed to charge card: could not charge the card: rpc error: code = Unavailable desc = name resolver error: produced zero addresses"
+            }
+          ],
+          "charge_spans": [],
+          "transaction_ids": []
+        }
+      },
+      {
+        "id": "ev-012",
+        "kind": "protected_probes",
+        "at": "2026-10-10T08:59:51.900000+00:00",
+        "data": {
+          "phase": "fault",
+          "samples": 4,
+          "failed": []
+        }
+      },
+      {
+        "id": "ev-013",
+        "kind": "checkout_attempt",
+        "at": "2026-10-10T08:59:53.900000+00:00",
+        "data": {
+          "phase": "fault",
+          "http_status": 500,
+          "matched": false,
+          "latency_ms": 210.0,
+          "cart_items_after": 1,
+          "error_code": null,
+          "trace_id": "0000000000000000000000000000000d"
+        }
+      },
+      {
+        "id": "ev-014",
+        "kind": "trace",
+        "at": "2026-10-10T08:59:54.100000+00:00",
+        "data": {
+          "trace_id": "0000000000000000000000000000000d",
+          "found": true,
+          "for": "ev-013",
+          "services": [
+            "checkout",
+            "frontend",
+            "frontend-proxy"
+          ],
+          "error_spans": [
+            {
+              "span_id": "4be7cb04894444e7",
+              "service": "checkout",
+              "operation": "oteldemo.CheckoutService/PlaceOrder",
+              "duration_ms": 12.0,
+              "error": true,
+              "rpc_code": 13,
+              "http_status": null,
+              "status_message": "failed to charge card: could not charge the card: rpc error: code = Unavailable desc = name resolver error: produced zero addresses"
+            }
+          ],
+          "charge_spans": [],
+          "transaction_ids": []
+        }
+      },
+      {
+        "id": "ev-015",
+        "kind": "protected_probes",
+        "at": "2026-10-10T08:59:54.600000+00:00",
+        "data": {
+          "phase": "fault",
+          "samples": 4,
+          "failed": []
+        }
+      },
+      {
+        "id": "ev-016",
+        "kind": "checkout_attempt",
+        "at": "2026-10-10T08:59:56.600000+00:00",
+        "data": {
+          "phase": "fault",
+          "http_status": 500,
+          "matched": false,
+          "latency_ms": 210.0,
+          "cart_items_after": 1,
+          "error_code": null,
+          "trace_id": "00000000000000000000000000000010"
+        }
+      },
+      {
+        "id": "ev-017",
+        "kind": "trace",
+        "at": "2026-10-10T08:59:56.800000+00:00",
+        "data": {
+          "trace_id": "00000000000000000000000000000010",
+          "found": true,
+          "for": "ev-016",
+          "services": [
+            "checkout",
+            "frontend",
+            "frontend-proxy"
+          ],
+          "error_spans": [
+            {
+              "span_id": "4be7cb04894444e7",
+              "service": "checkout",
+              "operation": "oteldemo.CheckoutService/PlaceOrder",
+              "duration_ms": 12.0,
+              "error": true,
+              "rpc_code": 13,
+              "http_status": null,
+              "status_message": "failed to charge card: could not charge the card: rpc error: code = Unavailable desc = name resolver error: produced zero addresses"
+            }
+          ],
+          "charge_spans": [],
+          "transaction_ids": []
+        }
+      },
+      {
+        "id": "ev-018",
+        "kind": "protected_probes",
+        "at": "2026-10-10T08:59:57.300000+00:00",
+        "data": {
+          "phase": "fault",
+          "samples": 4,
+          "failed": []
+        }
+      },
+      {
+        "id": "ev-019",
+        "kind": "run_phase",
+        "at": "2026-10-10T08:59:58.300000+00:00",
+        "data": {
+          "state": "RESTORING"
+        }
+      },
+      {
+        "id": "ev-020",
+        "kind": "run_phase",
+        "at": "2026-10-10T08:59:59.300000+00:00",
+        "data": {
+          "state": "VERIFYING_RECOVERY"
+        }
+      },
+      {
+        "id": "ev-021",
+        "kind": "checkout_attempt",
+        "at": "2026-10-10T09:00:01.300000+00:00",
+        "data": {
+          "phase": "recovery",
+          "http_status": 200,
+          "matched": true,
+          "latency_ms": 2830.0,
+          "cart_items_after": 0,
+          "error_code": null,
+          "trace_id": "00000000000000000000000000000015"
+        }
+      },
+      {
+        "id": "ev-022",
+        "kind": "checkout_attempt",
+        "at": "2026-10-10T09:00:03.300000+00:00",
+        "data": {
+          "phase": "recovery",
+          "http_status": 200,
+          "matched": true,
+          "latency_ms": 2830.0,
+          "cart_items_after": 0,
+          "error_code": null,
+          "trace_id": "00000000000000000000000000000016"
+        }
+      },
+      {
+        "id": "ev-023",
+        "kind": "checkout_attempt",
+        "at": "2026-10-10T09:00:05.300000+00:00",
+        "data": {
+          "phase": "recovery",
+          "http_status": 200,
+          "matched": true,
+          "latency_ms": 2830.0,
+          "cart_items_after": 0,
+          "error_code": null,
+          "trace_id": "00000000000000000000000000000017"
+        }
+      },
+      {
+        "id": "ev-024",
+        "kind": "protected_probes",
+        "at": "2026-10-10T09:00:05.800000+00:00",
+        "data": {
+          "phase": "recovery",
+          "samples": 4,
+          "failed": []
+        }
+      },
+      {
+        "id": "ev-025",
+        "kind": "run_phase",
+        "at": "2026-10-10T09:00:06.800000+00:00",
+        "data": {
+          "state": "RECOVERED"
+        }
+      }
+    ],
+    "missing": [],
+    "notes": [
+      "run outcome recorded by the controller: RECOVERED"
+    ]
+  },
+  "expected": {
+    "category": "connectivity",
+    "service": "checkout",
+    "edge": "checkout->payment",
+    "key_evidence": [
+      "ev-008",
+      "ev-011",
+      "ev-014",
+      "ev-017"
+    ],
+    "accept_categories": [],
+    "must_request_observations": false
+  },
+  "tags": [
+    "connectivity"
+  ]
+}

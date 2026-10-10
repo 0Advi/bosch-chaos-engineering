@@ -322,6 +322,7 @@ class DiagnosisCategory(str, Enum):
     AMOUNT_VALIDATION = "amount_validation"
     DUPLICATE_PAYMENT_RISK = "duplicate_payment_risk"
     UNKNOWN_OUTCOME = "unknown_outcome"
+    POST_PAYMENT_FAILURE = "post_payment_failure"   # charged, then a later checkout step failed
     INSUFFICIENT_EVIDENCE = "insufficient_evidence"
 
 
@@ -342,6 +343,42 @@ class Diagnosis(Contract):
             raise ValueError("a diagnosis other than insufficient_evidence must cite observations")
         if self.category == DiagnosisCategory.INSUFFICIENT_EVIDENCE and self.uncertainty != "high":
             raise ValueError("insufficient_evidence must carry high uncertainty")
+        return self
+
+
+class Suggestion(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    kind: Literal["observe", "configuration", "code_fix", "retry_policy", "none"]
+    action: Annotated[str, Field(max_length=500)]
+    rationale: Annotated[str, Field(max_length=1000)]
+
+
+class DiagnosisResult(Contract):
+    """One diagnosis attempt with its grounding verdict and provenance (P4-03)."""
+    model_config = ConfigDict(extra="forbid", frozen=True, protected_namespaces=())
+    result_id: Identifier
+    run_id: Identifier
+    diagnoser: Literal["model", "baseline"]
+    status: Literal["grounded", "unverified", "rejected", "failed"]
+    diagnosis: Optional[Diagnosis] = None
+    suggestions: list[Suggestion] = []
+    requested_observations: list[str] = []
+    problems: list[str] = []
+    evidence_sha256: Sha256
+    evidence_items: Annotated[int, Field(ge=0)]
+    model_requested: Optional[str] = None
+    model_served: Optional[str] = None
+    prompt_version: Optional[str] = None
+    usage: dict = {}
+    latency_s: Optional[float] = None
+    provider_error: Optional[dict] = None
+
+    @model_validator(mode="after")
+    def _status_consistent(self):
+        if self.status == "grounded" and (self.diagnosis is None or self.problems):
+            raise ValueError("a grounded result needs a diagnosis and no grounding problems")
+        if self.status == "failed" and self.diagnosis is not None:
+            raise ValueError("a failed result carries no diagnosis")
         return self
 
 

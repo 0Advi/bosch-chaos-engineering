@@ -1,0 +1,174 @@
+{
+  "case_id": "ho-duplicate-01",
+  "split": "heldout",
+  "kind": "diagnosis",
+  "description": "concurrent identical checkouts accepted twice",
+  "bundle": {
+    "items": [
+      {
+        "id": "ev-001",
+        "kind": "run_phase",
+        "at": "2026-10-10T08:59:41+00:00",
+        "data": {
+          "state": "BASELINING"
+        }
+      },
+      {
+        "id": "ev-002",
+        "kind": "checkout_attempt",
+        "at": "2026-10-10T08:59:43+00:00",
+        "data": {
+          "phase": "baseline",
+          "http_status": 200,
+          "matched": true,
+          "latency_ms": 2805.0,
+          "cart_items_after": 0,
+          "error_code": null,
+          "trace_id": "00000000000000000000000000000002"
+        }
+      },
+      {
+        "id": "ev-003",
+        "kind": "protected_probes",
+        "at": "2026-10-10T08:59:43.500000+00:00",
+        "data": {
+          "phase": "baseline",
+          "samples": 4,
+          "failed": []
+        }
+      },
+      {
+        "id": "ev-004",
+        "kind": "run_phase",
+        "at": "2026-10-10T08:59:44.500000+00:00",
+        "data": {
+          "state": "READY"
+        }
+      },
+      {
+        "id": "ev-005",
+        "kind": "run_phase",
+        "at": "2026-10-10T08:59:45.500000+00:00",
+        "data": {
+          "state": "ARMED"
+        }
+      },
+      {
+        "id": "ev-006",
+        "kind": "run_phase",
+        "at": "2026-10-10T08:59:46.500000+00:00",
+        "data": {
+          "state": "RUNNING"
+        }
+      },
+      {
+        "id": "ev-007",
+        "kind": "synthetic_request",
+        "at": "2026-10-10T08:59:48.500000+00:00",
+        "data": {
+          "logical_cart": "chaos-7f1d2c3b",
+          "requests": 3,
+          "accepted_orders": [
+            "order-a1",
+            "order-b2"
+          ],
+          "duplicate_accepted": true,
+          "cart_items_after": 0
+        }
+      },
+      {
+        "id": "ev-008",
+        "kind": "run_phase",
+        "at": "2026-10-10T08:59:49.500000+00:00",
+        "data": {
+          "state": "RESTORING"
+        }
+      },
+      {
+        "id": "ev-009",
+        "kind": "run_phase",
+        "at": "2026-10-10T08:59:50.500000+00:00",
+        "data": {
+          "state": "VERIFYING_RECOVERY"
+        }
+      },
+      {
+        "id": "ev-010",
+        "kind": "checkout_attempt",
+        "at": "2026-10-10T08:59:52.500000+00:00",
+        "data": {
+          "phase": "recovery",
+          "http_status": 200,
+          "matched": true,
+          "latency_ms": 2830.0,
+          "cart_items_after": 0,
+          "error_code": null,
+          "trace_id": "0000000000000000000000000000000a"
+        }
+      },
+      {
+        "id": "ev-011",
+        "kind": "checkout_attempt",
+        "at": "2026-10-10T08:59:54.500000+00:00",
+        "data": {
+          "phase": "recovery",
+          "http_status": 200,
+          "matched": true,
+          "latency_ms": 2830.0,
+          "cart_items_after": 0,
+          "error_code": null,
+          "trace_id": "0000000000000000000000000000000b"
+        }
+      },
+      {
+        "id": "ev-012",
+        "kind": "checkout_attempt",
+        "at": "2026-10-10T08:59:56.500000+00:00",
+        "data": {
+          "phase": "recovery",
+          "http_status": 200,
+          "matched": true,
+          "latency_ms": 2830.0,
+          "cart_items_after": 0,
+          "error_code": null,
+          "trace_id": "0000000000000000000000000000000c"
+        }
+      },
+      {
+        "id": "ev-013",
+        "kind": "protected_probes",
+        "at": "2026-10-10T08:59:57+00:00",
+        "data": {
+          "phase": "recovery",
+          "samples": 4,
+          "failed": []
+        }
+      },
+      {
+        "id": "ev-014",
+        "kind": "run_phase",
+        "at": "2026-10-10T08:59:58+00:00",
+        "data": {
+          "state": "RECOVERED"
+        }
+      }
+    ],
+    "missing": [],
+    "notes": [
+      "run outcome recorded by the controller: RECOVERED"
+    ]
+  },
+  "expected": {
+    "category": "duplicate_payment_risk",
+    "service": "checkout",
+    "edge": "checkout->payment",
+    "key_evidence": [
+      "ev-007"
+    ],
+    "accept_categories": [],
+    "must_request_observations": false
+  },
+  "tags": [
+    "duplicate_payment"
+  ]
+}
