@@ -87,7 +87,7 @@ test-sandbox:
 diagnose:
 	$(PYTHON) -m controller.cli diagnose $(RUN)
 eval-baseline:
-	$(PYTHON) -m evals.run --split heldout --diagnoser baseline
+	$(PYTHON) -m evals.run --split heldout --diagnoser baseline --out artifacts/results/evaluations
 eval-model:
 	$(PYTHON) -m evals.run --split heldout --diagnoser model
 
