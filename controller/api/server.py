@@ -40,6 +40,7 @@ STATUS = {
     "HOST_REJECTED": 403, "ORIGIN_REJECTED": 403,
     "NOT_FOUND": 404, "UNKNOWN_RUN": 404, "UNSUPPORTED_CAPABILITY": 404,
     "DUPLICATE_REQUEST": 409, "RUN_IN_PROGRESS": 409, "NOT_ACTIVE": 409, "JOB_IN_PROGRESS": 409,
+    "NOT_FINISHED": 409,
     "PAYLOAD_TOO_LARGE": 413, "UNSUPPORTED_MEDIA_TYPE": 415,
 }
 
@@ -70,12 +71,14 @@ class ControllerAPI:
                  gate_check: Optional[Callable] = None, allowed_origins: tuple[str, ...] = (),
                  baseline_runner: Optional[Callable[[], tuple[Baseline, Path]]] = None,
                  baselines_dir: Path = ROOT / "artifacts" / "baselines", root: Path = ROOT,
-                 stream_poll: float = 0.25, log: Callable[[str], None] = lambda line: None):
+                 stream_poll: float = 0.25, log: Callable[[str], None] = lambda line: None,
+                 provider_factory: Optional[Callable] = None, telemetry_factory: Optional[Callable] = None):
         self.db_path, self.results_dir = db_path, results_dir or db_path.parent
         self.env_factory, self.limits, self.gate_check = env_factory, limits, gate_check
         self.allowed_origins = set(allowed_origins)
         self.baseline_runner, self.baselines_dir, self.root = baseline_runner, baselines_dir, root
         self.stream_poll, self.log = stream_poll, log
+        self.provider_factory, self.telemetry_factory = provider_factory, telemetry_factory
         self.run_threads: dict[str, threading.Thread] = {}
         self.baseline_job: dict = {}
         self.lock = threading.Lock()
@@ -144,6 +147,9 @@ class ControllerAPI:
 
     def start_baseline(self, req) -> tuple[int, dict]:
         req.json()  # mutation requests must carry a JSON body (may be {})
+        return 202, self.start_baseline_job()
+
+    def start_baseline_job(self) -> dict:
         if self.baseline_runner is None:
             from ..cli import live_baseline_runner
             self.baseline_runner = live_baseline_runner
@@ -154,7 +160,7 @@ class ControllerAPI:
                 raise ApiError("RUN_IN_PROGRESS", "baselines are not captured while a run is active")
             self.baseline_job = {"job_id": f"job-{int(time.time())}", "state": "running"}
         threading.Thread(target=self._baseline_job, daemon=True).start()
-        return 202, {"ok": True, "job": self._job_view()}
+        return {"ok": True, "job": self._job_view()}
 
     def list_runs(self, req) -> dict:
         limit = int(req.query.get("limit", ["20"])[0])
@@ -165,6 +171,13 @@ class ControllerAPI:
         plan = self._plan(body.get("plan"))
         if not body.get("live"):
             return 200, {"ok": True, **runner.dry_run(plan)}
+        return 202, self.start_run(plan, live=True)
+
+    # ------------------------------------------- controller service (API + agent tools)
+    def start_run(self, plan: Plan, live: bool = True) -> dict:
+        """The single entry point for live runs, shared by HTTP requests and agent tools."""
+        if not live:
+            return {"ok": True, **runner.dry_run(plan)}
         try:
             run, cap, params = runner.prepare(plan, env=self.env_factory(), store=self.store(),
                                               limits=self.limits, gate_check=self.gate_check, log=self.log)
@@ -175,7 +188,47 @@ class ControllerAPI:
                                   name=f"run-{run_id}", daemon=True)
         self.run_threads[run_id] = thread
         thread.start()
-        return 202, {"ok": True, **self.run_view(self.store().get(run_id))}
+        return {"ok": True, **self.run_view(self.store().get(run_id))}
+
+    def run_summary(self, run_id: str) -> dict:
+        return self.run_view(self._run(run_id))
+
+    def run_events(self, run_id: str, after_seq: int = 0) -> list[dict]:
+        self._run(run_id)
+        return [e.model_dump(mode="json") for e in self.store().events(run_id, after_seq)]
+
+    def run_report(self, run_id: str) -> dict:
+        return self.report(None, run_id)["report"]
+
+    def abort_run(self, run_id: str) -> dict:
+        self._run(run_id)
+        if not self.store().request_abort(run_id):
+            raise ApiError("NOT_ACTIVE", "run is already finished")
+        return {"ok": True, "run_id": run_id,
+                "note": "abort recorded; the controller or watchdog restores and verifies recovery"}
+
+    # ------------------------------------------------------- P4 diagnosis
+    def diagnose(self, req, run_id: str) -> tuple[int, dict]:
+        body = req.json()
+        diagnoser = body.get("diagnoser", "model")
+        if diagnoser not in ("model", "baseline"):
+            raise ApiError("INVALID_INPUT", "diagnoser must be model or baseline")
+        run = self._run(run_id)
+        if not (S(run["state"]) in TERMINAL or run["state"] == S.NEEDS_ATTENTION.value):
+            raise ApiError("NOT_FINISHED", "diagnose a run after it has finished restoring", status=409)
+        from ..agent.service import diagnose_run
+        provider = (self.provider_factory or _default_provider)() if diagnoser == "model" else None
+        telemetry = self.telemetry_factory() if self.telemetry_factory else None
+        result = diagnose_run(self.store(), run_id, self.results_dir, diagnoser, provider, telemetry)
+        status = 502 if result.status == "failed" else 200
+        return status, {"ok": result.status != "failed", "diagnosis": result.model_dump(mode="json")}
+
+    def get_diagnosis(self, _req, run_id: str) -> dict:
+        self._run(run_id)
+        path = run_dir(self.results_dir, run_id) / "diagnosis.json"
+        if not path.is_file():
+            raise ApiError("NOT_FOUND", "no diagnosis yet; POST to this URL to create one")
+        return {"ok": True, "diagnosis": json.loads(path.read_text())}
 
     def get_run(self, _req, run_id: str) -> dict:
         return {"ok": True, **self.run_view(self._run(run_id))}
@@ -189,11 +242,7 @@ class ControllerAPI:
 
     def abort(self, req, run_id: str) -> tuple[int, dict]:
         req.json()
-        self._run(run_id)
-        if not self.store().request_abort(run_id):
-            raise ApiError("NOT_ACTIVE", "run is already finished")
-        return 202, {"ok": True, "run_id": run_id,
-                     "note": "abort recorded; the controller or watchdog restores and verifies recovery"}
+        return 202, self.abort_run(run_id)
 
     def report(self, req, run_id: str, fmt: str = "json"):
         run = self._run(run_id)
@@ -268,6 +317,11 @@ class ControllerAPI:
         return out
 
 
+def _default_provider():
+    from ..agent.providers import AnthropicProvider
+    return AnthropicProvider()
+
+
 def _problems(error: ValidationError) -> list[str]:
     return [f"{'.'.join(map(str, e['loc']))}: {e['msg']}" for e in error.errors()]
 
@@ -291,6 +345,8 @@ ROUTES = [
     ("GET", rf"/api/v1/runs/{ID}/report", "report"),
     ("GET", rf"/api/v1/runs/{ID}/report\.md", "report_md"),
     ("GET", rf"/api/v1/runs/{ID}/evidence", "evidence"),
+    ("POST", rf"/api/v1/runs/{ID}/diagnosis", "diagnose"),
+    ("GET", rf"/api/v1/runs/{ID}/diagnosis", "get_diagnosis"),
     ("GET", rf"/api/v1/runs/{ID}/evidence/(?P<name>[a-z.]+)", "evidence_file"),
 ]
 COMPILED = [(m, re.compile(f"^{p}$"), h) for m, p, h in ROUTES]

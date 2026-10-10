@@ -1,0 +1,270 @@
+{
+  "case_id": "ho-healthy-stale-log-02",
+  "split": "heldout",
+  "kind": "diagnosis",
+  "description": "healthy, with an old startup error log (false-positive trap)",
+  "bundle": {
+    "items": [
+      {
+        "id": "ev-001",
+        "kind": "run_phase",
+        "at": "2026-10-10T08:59:41+00:00",
+        "data": {
+          "state": "BASELINING"
+        }
+      },
+      {
+        "id": "ev-002",
+        "kind": "checkout_attempt",
+        "at": "2026-10-10T08:59:43+00:00",
+        "data": {
+          "phase": "baseline",
+          "http_status": 200,
+          "matched": true,
+          "latency_ms": 2810.0,
+          "cart_items_after": 0,
+          "error_code": null,
+          "trace_id": "00000000000000000000000000000002"
+        }
+      },
+      {
+        "id": "ev-003",
+        "kind": "protected_probes",
+        "at": "2026-10-10T08:59:43.500000+00:00",
+        "data": {
+          "phase": "baseline",
+          "samples": 4,
+          "failed": []
+        }
+      },
+      {
+        "id": "ev-004",
+        "kind": "run_phase",
+        "at": "2026-10-10T08:59:44.500000+00:00",
+        "data": {
+          "state": "READY"
+        }
+      },
+      {
+        "id": "ev-005",
+        "kind": "run_phase",
+        "at": "2026-10-10T08:59:45.500000+00:00",
+        "data": {
+          "state": "ARMED"
+        }
+      },
+      {
+        "id": "ev-006",
+        "kind": "run_phase",
+        "at": "2026-10-10T08:59:46.500000+00:00",
+        "data": {
+          "state": "RUNNING"
+        }
+      },
+      {
+        "id": "ev-007",
+        "kind": "checkout_attempt",
+        "at": "2026-10-10T08:59:48.500000+00:00",
+        "data": {
+          "phase": "fault",
+          "http_status": 200,
+          "matched": true,
+          "latency_ms": 2790.0,
+          "cart_items_after": 0,
+          "error_code": null,
+          "trace_id": "00000000000000000000000000000007"
+        }
+      },
+      {
+        "id": "ev-008",
+        "kind": "protected_probes",
+        "at": "2026-10-10T08:59:49+00:00",
+        "data": {
+          "phase": "fault",
+          "samples": 4,
+          "failed": []
+        }
+      },
+      {
+        "id": "ev-009",
+        "kind": "checkout_attempt",
+        "at": "2026-10-10T08:59:51+00:00",
+        "data": {
+          "phase": "fault",
+          "http_status": 200,
+          "matched": true,
+          "latency_ms": 2790.0,
+          "cart_items_after": 0,
+          "error_code": null,
+          "trace_id": "00000000000000000000000000000009"
+        }
+      },
+      {
+        "id": "ev-010",
+        "kind": "protected_probes",
+        "at": "2026-10-10T08:59:51.500000+00:00",
+        "data": {
+          "phase": "fault",
+          "samples": 4,
+          "failed": []
+        }
+      },
+      {
+        "id": "ev-011",
+        "kind": "checkout_attempt",
+        "at": "2026-10-10T08:59:53.500000+00:00",
+        "data": {
+          "phase": "fault",
+          "http_status": 200,
+          "matched": true,
+          "latency_ms": 2790.0,
+          "cart_items_after": 0,
+          "error_code": null,
+          "trace_id": "0000000000000000000000000000000b"
+        }
+      },
+      {
+        "id": "ev-012",
+        "kind": "protected_probes",
+        "at": "2026-10-10T08:59:54+00:00",
+        "data": {
+          "phase": "fault",
+          "samples": 4,
+          "failed": []
+        }
+      },
+      {
+        "id": "ev-013",
+        "kind": "checkout_attempt",
+        "at": "2026-10-10T08:59:56+00:00",
+        "data": {
+          "phase": "fault",
+          "http_status": 200,
+          "matched": true,
+          "latency_ms": 2790.0,
+          "cart_items_after": 0,
+          "error_code": null,
+          "trace_id": "0000000000000000000000000000000d"
+        }
+      },
+      {
+        "id": "ev-014",
+        "kind": "protected_probes",
+        "at": "2026-10-10T08:59:56.500000+00:00",
+        "data": {
+          "phase": "fault",
+          "samples": 4,
+          "failed": []
+        }
+      },
+      {
+        "id": "ev-015",
+        "kind": "log",
+        "at": "2026-10-10T08:59:56.700000+00:00",
+        "data": {
+          "service": "checkout",
+          "severity": "ERROR",
+          "at_note": "emitted 3 hours before this run",
+          "body": "payment unreachable: connection refused (startup, before readiness)"
+        }
+      },
+      {
+        "id": "ev-016",
+        "kind": "run_phase",
+        "at": "2026-10-10T08:59:57.700000+00:00",
+        "data": {
+          "state": "RESTORING"
+        }
+      },
+      {
+        "id": "ev-017",
+        "kind": "run_phase",
+        "at": "2026-10-10T08:59:58.700000+00:00",
+        "data": {
+          "state": "VERIFYING_RECOVERY"
+        }
+      },
+      {
+        "id": "ev-018",
+        "kind": "checkout_attempt",
+        "at": "2026-10-10T09:00:00.700000+00:00",
+        "data": {
+          "phase": "recovery",
+          "http_status": 200,
+          "matched": true,
+          "latency_ms": 2830.0,
+          "cart_items_after": 0,
+          "error_code": null,
+          "trace_id": "00000000000000000000000000000012"
+        }
+      },
+      {
+        "id": "ev-019",
+        "kind": "checkout_attempt",
+        "at": "2026-10-10T09:00:02.700000+00:00",
+        "data": {
+          "phase": "recovery",
+          "http_status": 200,
+          "matched": true,
+          "latency_ms": 2830.0,
+          "cart_items_after": 0,
+          "error_code": null,
+          "trace_id": "00000000000000000000000000000013"
+        }
+      },
+      {
+        "id": "ev-020",
+        "kind": "checkout_attempt",
+        "at": "2026-10-10T09:00:04.700000+00:00",
+        "data": {
+          "phase": "recovery",
+          "http_status": 200,
+          "matched": true,
+          "latency_ms": 2830.0,
+          "cart_items_after": 0,
+          "error_code": null,
+          "trace_id": "00000000000000000000000000000014"
+        }
+      },
+      {
+        "id": "ev-021",
+        "kind": "protected_probes",
+        "at": "2026-10-10T09:00:05.200000+00:00",
+        "data": {
+          "phase": "recovery",
+          "samples": 4,
+          "failed": []
+        }
+      },
+      {
+        "id": "ev-022",
+        "kind": "run_phase",
+        "at": "2026-10-10T09:00:06.200000+00:00",
+        "data": {
+          "state": "RECOVERED"
+        }
+      }
+    ],
+    "missing": [],
+    "notes": [
+      "run outcome recorded by the controller: RECOVERED"
+    ]
+  },
+  "expected": {
+    "category": "healthy",
+    "service": null,
+    "edge": null,
+    "key_evidence": [
+      "ev-007",
+      "ev-009",
+      "ev-011",
+      "ev-013"
+    ],
+    "accept_categories": [],
+    "must_request_observations": false
+  },
+  "tags": [
+    "healthy",
+    "false_positive_trap"
+  ]
+}

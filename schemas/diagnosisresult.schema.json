@@ -1,0 +1,308 @@
+{
+  "$defs": {
+    "Diagnosis": {
+      "additionalProperties": false,
+      "properties": {
+        "affected_paths": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Affected Paths",
+          "type": "array"
+        },
+        "alternatives": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Alternatives",
+          "type": "array"
+        },
+        "category": {
+          "$ref": "#/$defs/DiagnosisCategory"
+        },
+        "cited_observations": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9-]{1,63}$",
+            "type": "string"
+          },
+          "title": "Cited Observations",
+          "type": "array"
+        },
+        "edge": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z-]+->[a-z-]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Edge"
+        },
+        "next_action": {
+          "title": "Next Action",
+          "type": "string"
+        },
+        "run_id": {
+          "pattern": "^[a-z0-9][a-z0-9-]{1,63}$",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1.0.0",
+          "default": "1.0.0",
+          "enum": [
+            "1.0.0"
+          ],
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "service": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Service"
+        },
+        "uncertainty": {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "title": "Uncertainty",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "category",
+        "uncertainty",
+        "next_action"
+      ],
+      "title": "Diagnosis",
+      "type": "object"
+    },
+    "DiagnosisCategory": {
+      "enum": [
+        "healthy",
+        "card_decline",
+        "handler_failure",
+        "connectivity",
+        "currency_conversion",
+        "amount_validation",
+        "duplicate_payment_risk",
+        "unknown_outcome",
+        "post_payment_failure",
+        "insufficient_evidence"
+      ],
+      "title": "DiagnosisCategory",
+      "type": "string"
+    },
+    "Suggestion": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "maxLength": 500,
+          "title": "Action",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "observe",
+            "configuration",
+            "code_fix",
+            "retry_policy",
+            "none"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "rationale": {
+          "maxLength": 1000,
+          "title": "Rationale",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "action",
+        "rationale"
+      ],
+      "title": "Suggestion",
+      "type": "object"
+    }
+  },
+  "$id": "bosch-chaos/diagnosisresult/1.0.0",
+  "additionalProperties": false,
+  "description": "One diagnosis attempt with its grounding verdict and provenance (P4-03).",
+  "properties": {
+    "diagnoser": {
+      "enum": [
+        "model",
+        "baseline"
+      ],
+      "title": "Diagnoser",
+      "type": "string"
+    },
+    "diagnosis": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Diagnosis"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "evidence_items": {
+      "minimum": 0,
+      "title": "Evidence Items",
+      "type": "integer"
+    },
+    "evidence_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Evidence Sha256",
+      "type": "string"
+    },
+    "latency_s": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Latency S"
+    },
+    "model_requested": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Model Requested"
+    },
+    "model_served": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Model Served"
+    },
+    "problems": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Problems",
+      "type": "array"
+    },
+    "prompt_version": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Prompt Version"
+    },
+    "provider_error": {
+      "anyOf": [
+        {
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Provider Error"
+    },
+    "requested_observations": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Requested Observations",
+      "type": "array"
+    },
+    "result_id": {
+      "pattern": "^[a-z0-9][a-z0-9-]{1,63}$",
+      "title": "Result Id",
+      "type": "string"
+    },
+    "run_id": {
+      "pattern": "^[a-z0-9][a-z0-9-]{1,63}$",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "enum": [
+        "1.0.0"
+      ],
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "grounded",
+        "unverified",
+        "rejected",
+        "failed"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "suggestions": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Suggestion"
+      },
+      "title": "Suggestions",
+      "type": "array"
+    },
+    "usage": {
+      "default": {},
+      "title": "Usage",
+      "type": "object"
+    }
+  },
+  "required": [
+    "result_id",
+    "run_id",
+    "diagnoser",
+    "status",
+    "evidence_sha256",
+    "evidence_items"
+  ],
+  "title": "DiagnosisResult",
+  "type": "object"
+}

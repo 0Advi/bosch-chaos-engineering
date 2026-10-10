@@ -1,0 +1,50 @@
+schema_version: 1
+# Source-derived payment error semantics (P4-02), read from the pinned upstream code
+# in config/source_context.yaml. These are expectations, not runtime observations:
+# a diagnosis must still cite observed evidence. Revisit if runtime evidence disagrees.
+categories:
+  healthy:
+    meaning: valid checkouts succeed, protected paths succeed, no payment error spans
+  card_decline:
+    meaning: payment validation rejected the card (invalid number, unsupported type, expired)
+    signals: [payment charge span error with a card-validation message, frontend 422 PAYMENT_FAILED, cart retained]
+    service: payment
+    edge: checkout->payment
+  handler_failure:
+    meaning: the payment Charge handler threw before validating the card
+    signals: [payment charge span error unrelated to card fields (e.g. "Invalid token"), payment health still serving]
+    known_ambiguity: the frontend maps this to 422 PAYMENT_FAILED exactly like a card decline; use span messages, not the HTTP status alone
+    service: payment
+    edge: checkout->payment
+  connectivity:
+    meaning: checkout could not reach a payment endpoint
+    signals: [checkout PlaceOrder error with gRPC Unavailable, no payment charge span for the request, frontend 500 "Failed to place order."]
+    service: checkout
+    edge: checkout->payment
+  currency_conversion:
+    meaning: checkout failed converting prices to the requested currency before charging
+    signals: [currency Convert error span, checkout Internal error, no payment span, cart retained]
+    service: currency
+    edge: checkout->currency
+  amount_validation:
+    meaning: payment accepted or rejected a Money value that violates demo.proto invariants
+    signals: [Charge requests with negative, zero, out-of-range or unknown-currency amounts]
+    note: the pinned payment code does not validate amount or currency; acceptance is the expected (unsafe) behavior
+    service: payment
+  duplicate_payment_risk:
+    meaning: more than one charge or order accepted for one logical cart/request
+    signals: [several transaction or order IDs for one synthetic user/cart, concurrent identical PlaceOrder requests]
+    note: no idempotency key or ledger exists; do not infer double charges from UUIDs alone
+    service: checkout
+    edge: checkout->payment
+  post_payment_failure:
+    meaning: payment succeeded, then a later checkout step (shipping, email) failed
+    signals: [payment charge span OK with a transaction ID, later shipping/email error span, frontend error, cart may be retained]
+    edge: checkout->shipping
+  unknown_outcome:
+    meaning: whether the customer was charged cannot be determined from the evidence
+  insufficient_evidence:
+    meaning: evidence is missing, stale or contradictory; request specific observations instead of guessing
+retry_rule: >-
+  Never recommend retrying a payment unless the evidence shows an idempotency key or a
+  durable payment ledger; the pinned application has neither.

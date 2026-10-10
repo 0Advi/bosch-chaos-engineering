@@ -1,7 +1,8 @@
 PYTHON ?= python3
 
 .PHONY: help bootstrap validate build start stop status smoke verify test schemas preflight flags capabilities \
-	probe baseline derive-policy runs abort reconcile api report test-sandbox
+	probe baseline derive-policy runs abort reconcile api report test-sandbox \
+	diagnose eval-baseline eval-model
 help:
 	@echo "bootstrap  Fetch pinned upstream source"
 	@echo "validate   Validate the selected deployment without starting containers"
@@ -25,6 +26,9 @@ help:
 	@echo "api        Start the local controller API on http://127.0.0.1:8765"
 	@echo "report RUN=<id>  Export evidence and print the run report"
 	@echo "test-sandbox  Opt-in checks against the running dedicated sandbox"
+	@echo "diagnose RUN=<id>  Blind, evidence-grounded model diagnosis of a finished run"
+	@echo "eval-baseline  Held-out evaluation with the rule baseline (free)"
+	@echo "eval-model     Held-out evaluation with Claude (needs credentials; costs money)"
 
 bootstrap:
 	git submodule update --init --recursive
@@ -70,3 +74,9 @@ report:
 	$(PYTHON) -m controller.cli report $(RUN)
 test-sandbox:
 	BOSCH_SANDBOX_TESTS=1 $(PYTHON) -m pytest -q -s -m sandbox tests/integration
+diagnose:
+	$(PYTHON) -m controller.cli diagnose $(RUN)
+eval-baseline:
+	$(PYTHON) -m evals.run --split heldout --diagnoser baseline
+eval-model:
+	$(PYTHON) -m evals.run --split heldout --diagnoser model

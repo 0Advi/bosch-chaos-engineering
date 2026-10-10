@@ -10,6 +10,7 @@
         "amount_validation",
         "duplicate_payment_risk",
         "unknown_outcome",
+        "post_payment_failure",
         "insufficient_evidence"
       ],
       "title": "DiagnosisCategory",
