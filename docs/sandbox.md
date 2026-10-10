@@ -6,7 +6,8 @@ the shared preview, is never approved isolation.
 
 ## Provision
 
-1. Use a dedicated VM or machine (at least 8 vCPU, 16 GB RAM, 40 GB disk) with
+1. Use a dedicated VM or machine (suggested starting capacity: 8 vCPU, 16 GB RAM,
+   40 GB disk; measure actual requirements) with
    Docker Engine and Compose 2.24.4+. Do not add other projects to that daemon.
 2. Clone the repository, then `make bootstrap validate start verify`.
 3. Record the identity:
@@ -17,8 +18,15 @@ the shared preview, is never approved isolation.
    ```
 
 4. Put both values in `config/sandbox.yaml` (`docker_context`, `daemon_id`).
-5. Run `make preflight`. Only when it reports no errors may a reviewer (M5)
-   approve a PR that sets `approved: true`.
+5. Run `make preflight`. Before approval, expect `isolation_approved: false`
+   and a nonzero exit. Only when `scope_ok: true` with no identity/scope errors
+   may a reviewer (M5) approve a PR that sets `approved: true`. The warning about
+   pending approval is not a scope error. Rerun preflight after approval.
+
+Approval records the sandbox identity; it does not enable execution. In P0,
+the CLI live runner and flag roundtrip command are blocked independently of
+configuration. P1/P2 baseline, observer, watchdog and recovery checks must be
+implemented and reviewed before that implementation gate can be removed.
 
 ## What the preflight checks
 

@@ -1,9 +1,8 @@
-"""Guarded single-run executor.
+"""Preview runner and deferred P2 execution scaffold.
 
-Dry-run by default. A live run additionally needs the capability in the
-execution policy, an approved sandbox, a baseline file and the run lock.
-Restoration happens in `finally`, so normal completion, Ctrl-C and adapter
-errors all restore. Hard process termination still needs the P2-03 watchdog.
+Live execution is unconditionally blocked in Phase 0. The scaffold below still
+needs measured baseline validation, protected-path observation, enforced hard
+deadlines, an independent watchdog and recovery testing before P2 enables it.
 """
 from __future__ import annotations
 
@@ -84,6 +83,13 @@ def validate(plan: Plan, catalog: Catalog, policy: dict) -> tuple:
 
 
 def live_gates(plan: Plan, cap, policy: dict, spec: dict) -> list[str]:
+    # This is an implementation gate, not an operator-configurable switch.
+    # Merely changing approved/execution_enabled must never activate P2 drafts.
+    return ["P0 supports preview only; P1 baseline and P2 safety/watchdog are not implemented"]
+
+
+def _draft_live_gates(plan: Plan, cap, policy: dict, spec: dict) -> list[str]:
+    """Deferred P2 checks; deliberately not used to authorize execution."""
     blockers = []
     if not is_live(policy, cap.id):
         blockers.append(f"{cap.id} is not listed as live in config/execution_policy.yaml")

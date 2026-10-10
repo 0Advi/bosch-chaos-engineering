@@ -82,8 +82,8 @@ def evaluate(snapshot: dict, spec: dict, repo_root: Path = ROOT) -> ScopeReport:
     report = ScopeReport()
     err, warn = report.errors.append, report.warnings.append
 
-    if not spec.get("approved"):
-        err("sandbox spec is not approved: this is a shared/preview environment")
+    if spec.get("approved") is not True:
+        warn("sandbox spec is not approved: this is a shared/preview environment")
     if snapshot["docker_context"] != spec["docker_context"]:
         err(f"docker context {snapshot['docker_context']!r} != {spec['docker_context']!r}")
     if not spec.get("daemon_id"):
@@ -121,17 +121,17 @@ def evaluate(snapshot: dict, spec: dict, repo_root: Path = ROOT) -> ScopeReport:
             for m in c.get("mounts", []):
                 if m["type"] != "bind" or _under(m["source"], roots):
                     continue
-                if m["source"] in exceptions.get(service, []):
+                if m["source"] in exceptions.get(service, []) and not m.get("rw", True):
                     warn(f"{service}: accepted upstream bind {m['source']} -> "
                          f"{m['destination']} ({'rw' if m['rw'] else 'ro'})")
                 else:
-                    err(f"{service}: bind mount outside allowed roots: {m['source']}")
+                    err(f"{service}: bind mount outside allowed roots or writable host exception: {m['source']}")
 
     for service in spec.get("mutable_services", []):
         items = by_service.get(service, [])
         if len(items) == 1:
             report.targets[service] = items[0]["id"]
-    report.approved = bool(spec.get("approved"))
+    report.approved = spec.get("approved") is True
     return report
 
 

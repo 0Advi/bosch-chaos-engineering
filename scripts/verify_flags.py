@@ -3,8 +3,8 @@
 
 Static: deploy/flagd matches the pinned upstream flag names and is at baseline.
 Runtime (--runtime): flagd reads deploy/flagd, flagd-ui mounts it read-only, and
-an OFREP evaluation inside the sandbox network returns the file's value. With
---roundtrip it also flips paymentUnreachable on and back (sandbox only).
+an OFREP evaluation inside the sandbox network returns the file's value.
+--roundtrip is rejected in P0 because enabling a fault needs the P2 watchdog.
 """
 import argparse
 import json
@@ -16,7 +16,7 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from controller.executor.flag_store import FLAG_FILE, FlagStore, baseline_problems  # noqa: E402
+from controller.executor.flag_store import FLAG_FILE, baseline_problems  # noqa: E402
 from controller.safety.sandbox import load_spec  # noqa: E402
 
 CURL_IMAGE = "curlimages/curl:8.10.1"
@@ -69,6 +69,11 @@ def main():
     parser.add_argument("--roundtrip", action="store_true")
     args = parser.parse_args()
 
+    if args.roundtrip:
+        print("Refusing --roundtrip in P0: fault mutation requires the P2 runner and watchdog.",
+              file=sys.stderr)
+        return 2
+
     problems = baseline_problems()
     if problems:
         print("Flag file is not at baseline:", *problems, sep="\n  ")
@@ -84,20 +89,6 @@ def main():
     for flag in ("paymentFailure", "paymentUnreachable"):
         print(f"PASS runtime: {flag} = {wait_for(flag, spec['network'], {'paymentFailure': 0, 'paymentUnreachable': False}[flag])['value']!r}")
 
-    if args.roundtrip:
-        if not spec.get("approved"):
-            print("Refusing --roundtrip: config/sandbox.yaml is not approved", file=sys.stderr)
-            return 2
-        store = FlagStore()
-        prior = store.snapshot("paymentUnreachable")
-        applied = store.set_variant("paymentUnreachable", "on", prior.sha256)
-        try:
-            wait_for("paymentUnreachable", spec["network"], True)
-            print("PASS replacement visible in flagd: paymentUnreachable = True")
-        finally:
-            store.restore(prior, applied.sha256)
-        wait_for("paymentUnreachable", spec["network"], False)
-        print("PASS restored: paymentUnreachable = False")
     return 0
 
 

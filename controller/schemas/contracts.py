@@ -10,14 +10,14 @@ from enum import Enum
 from pathlib import PurePosixPath
 from typing import Annotated, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, field_validator, model_validator
 
 SCHEMA_VERSION = "1.0.0"
 
 Identifier = Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9-]{1,63}$")]
 Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 GitRevision = Annotated[str, Field(pattern=r"^[0-9a-f]{40}$")]
-ParamValue = Union[bool, int, str]
+ParamValue = Union[StrictBool, StrictInt, StrictStr]
 
 
 class Contract(BaseModel):
@@ -81,8 +81,8 @@ class ParamSpec(BaseModel):
 
 class DurationLimits(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    default_seconds: Annotated[int, Field(ge=0, le=30)]
-    max_seconds: Annotated[int, Field(ge=0, le=30)]
+    default_seconds: Annotated[int, Field(ge=0, le=30, strict=True)]
+    max_seconds: Annotated[int, Field(ge=0, le=30, strict=True)]
 
 
 class Capability(Contract):
@@ -138,11 +138,21 @@ class Plan(Contract):
     capability_id: Identifier
     parameters: dict[str, ParamValue] = {}
     sandbox: SandboxRef
-    duration_seconds: Annotated[int, Field(ge=0, le=30)]
+    duration_seconds: Annotated[int, Field(ge=0, le=30, strict=True)]
     baseline_ref: Optional[str] = None
     expected_impact: Annotated[str, Field(min_length=1, max_length=500)]
     policy_version: str
     requested_by: Literal["user", "agent"]
+
+    @field_validator("baseline_ref")
+    @classmethod
+    def _baseline_path(cls, value):
+        if value is not None:
+            path = PurePosixPath(value)
+            if (path.is_absolute() or ".." in path.parts or "\\" in value
+                    or not value.startswith("artifacts/")):
+                raise ValueError("baseline_ref must be a relative path inside artifacts/")
+        return value
 
 
 # ---------------------------------------------------------------------- run

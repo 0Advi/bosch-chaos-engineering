@@ -30,6 +30,7 @@ class FlagSnapshot:
     flag: str
     default_variant: str
     value: object
+    state: str = "ENABLED"
 
 
 def _sha(data: bytes) -> str:
@@ -48,12 +49,15 @@ class FlagStore:
         doc, digest = self.read()
         entry = doc["flags"][flag]
         variant = entry["defaultVariant"]
-        return FlagSnapshot(digest, flag, variant, entry["variants"][variant])
+        return FlagSnapshot(digest, flag, variant, entry["variants"][variant], entry["state"])
 
-    def set_variant(self, flag: str, variant: str, expected_sha256: str) -> FlagSnapshot:
+    def set_variant(self, flag: str, variant: str, expected_sha256: str,
+                    state: str = "ENABLED") -> FlagSnapshot:
         """Change one flag's defaultVariant; return the snapshot after writing."""
         if flag not in WRITABLE_FLAGS:
             raise PermissionError(f"flag {flag} is not writable by the controller")
+        if state not in ("ENABLED", "DISABLED"):
+            raise ValueError("flag state must be ENABLED or DISABLED")
         doc, digest = self.read()
         if digest != expected_sha256:
             raise FlagConflict(f"{self.path.name} changed externally (expected {expected_sha256[:12]})")
@@ -63,13 +67,14 @@ class FlagStore:
         if entry.get("targeting"):
             raise ValueError(f"{flag} has targeting rules; defaultVariant would not decide evaluation")
         entry["defaultVariant"] = variant
-        entry["state"] = "ENABLED"
+        entry["state"] = state
         self._atomic_write(json.dumps(doc, indent=2) + "\n")
         return self.snapshot(flag)
 
     def restore(self, prior: FlagSnapshot, applied_sha256: str) -> FlagSnapshot:
         """Put back the exact prior variant if nobody else edited the file."""
-        restored = self.set_variant(prior.flag, prior.default_variant, applied_sha256)
+        restored = self.set_variant(prior.flag, prior.default_variant, applied_sha256,
+                                    state=prior.state)
         if restored.value != prior.value:
             raise RuntimeError(f"{prior.flag} restored to {restored.value!r}, expected {prior.value!r}")
         return restored
@@ -98,4 +103,7 @@ def baseline_problems(path: Path = FLAG_FILE) -> list[str]:
         upstream = json.loads(UPSTREAM_FLAG_FILE.read_text())
         if set(upstream["flags"]) != set(doc["flags"]):
             problems.append("flag names differ from the pinned upstream definitions")
+        for name, entry in doc["flags"].items():
+            if name in upstream["flags"] and entry != upstream["flags"][name]:
+                problems.append(f"{name} differs from the pinned healthy definition")
     return problems

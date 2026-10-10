@@ -5,6 +5,9 @@ import argparse
 import json
 from pathlib import Path
 import sys
+import subprocess
+
+from pydantic import ValidationError
 
 from .agent.tools import ToolRegistry
 from .catalog import Unsupported
@@ -32,7 +35,7 @@ def main(argv=None) -> int:
     plan.add_argument("--impact", default="checkout fails while protected paths stay healthy")
     plan.add_argument("--baseline-ref")
     plan.add_argument("-o", "--out", type=Path)
-    run = sub.add_parser("run", help="dry-run a plan; --live executes if every gate passes")
+    run = sub.add_parser("run", help="preview a plan; --live is unavailable in P0")
     run.add_argument("plan_file", type=Path)
     run.add_argument("--live", action="store_true")
     args = parser.parse_args(argv)
@@ -57,6 +60,13 @@ def main(argv=None) -> int:
             out = runner.execute(Plan.model_validate_json(args.plan_file.read_text()), live=args.live)
     except Unsupported as refusal:
         out = {"ok": False, **refusal.as_dict()}
+    except ValidationError:
+        out = {"ok": False, "error": "INVALID_PLAN", "message": "plan does not match the contract"}
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        out = {"ok": False, "error": "ENVIRONMENT_UNAVAILABLE",
+               "message": "Docker inspection failed or timed out; sandbox approval is unverified"}
+    except (OSError, ValueError) as error:
+        out = {"ok": False, "error": "INVALID_INPUT", "message": str(error)}
     print(json.dumps(out, indent=2, default=str))
     failed = out.get("ok") is False or out.get("isolation_approved") is False
     return 1 if failed else 0

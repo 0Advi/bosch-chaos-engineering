@@ -36,7 +36,7 @@ class DescribeArgs(Args):
 class ProposePlanArgs(Args):
     capability_id: Annotated[str, Field(max_length=64)]
     parameters: dict[Annotated[str, Field(max_length=32)], ParamValue] = {}
-    duration_seconds: Annotated[int, Field(ge=0, le=30)] = 15
+    duration_seconds: Annotated[int, Field(ge=0, le=30, strict=True)] = 15
     expected_impact: Annotated[str, Field(min_length=1, max_length=500)]
 
 

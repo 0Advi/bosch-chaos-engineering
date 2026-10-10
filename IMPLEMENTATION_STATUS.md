@@ -2,6 +2,22 @@
 
 Updated 10 October 2026. Local startup verification passed at **11:21 IST**.
 
+## Phase 0 integration review
+
+The teammate’s Phase 0 foundation has been reviewed and hardened. Eight shared
+record schemas, lifecycle/event contracts, sandbox scope checks, a typed payment
+capability catalog, bounded proposal tools and sandbox-owned flags are implemented.
+All 93 controller tests pass with pinned dependencies; eight schema exports match.
+Configuration validation and read-only flag mount/runtime checks passed. Both
+payment flags evaluated to their healthy values after an identical-content atomic
+file replacement; flagd logged the file change. No fault was injected.
+
+Live execution is blocked in code, including the flag verification roundtrip. The
+current Docker Desktop preview fails dedicated sandbox approval checks. Baseline
+measurements and independent watchdog/abort/recovery verification remain pending.
+See [the review](docs/phase0-review.md). These checks do not refresh the startup
+workflow evidence below.
+
 ## Completed
 
 - Public repository and licensed, pinned OpenTelemetry Astronomy Shop source.
@@ -75,7 +91,8 @@ socket and host filesystem for observation.
 
 ## Next action
 
-Measure a repeatable healthy payment baseline and confirm trace dependencies.
+Phase 0 contracts are ready. Measure a repeatable healthy payment baseline and
+confirm trace dependencies.
 The payment evaluation design and disabled scenario catalog are documented in
 [docs/payment-failure-plan.md](docs/payment-failure-plan.md). Implement deterministic
 safety and a guarded flag executor before enabling a payment scenario in a

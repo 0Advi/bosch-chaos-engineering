@@ -1,0 +1,165 @@
+{
+  "Capability": {
+    "schema_version": "1.0.0",
+    "id": "payment-handler-failure",
+    "title": "Payment Charge handler rejects requests",
+    "family": "payment_unavailable",
+    "adapter": "flag",
+    "adapter_version": "1",
+    "execution": "preview",
+    "disabled_reason": null,
+    "target_service": "payment",
+    "affected_dependency": null,
+    "parameters": [
+      {
+        "name": "failure_rate",
+        "type": "enum",
+        "description": "paymentFailure variant to apply",
+        "default": "100%",
+        "minimum": null,
+        "maximum": null,
+        "choices": [
+          "10%",
+          "25%",
+          "50%",
+          "75%",
+          "100%"
+        ]
+      }
+    ],
+    "adapter_config": {
+      "flag": "paymentFailure"
+    },
+    "prerequisites": [
+      "dedicated_verified_sandbox",
+      "stable_measured_baseline",
+      "fresh_correlated_observations",
+      "isolated_flag_storage"
+    ],
+    "duration": {
+      "default_seconds": 15,
+      "max_seconds": 30
+    },
+    "observations": [
+      "checkout_http_status",
+      "payment_error_span",
+      "cart_retained"
+    ],
+    "affected_probes": [
+      "POST /api/checkout"
+    ],
+    "protected_probes": [
+      "GET /",
+      "GET /api/products",
+      "GET /api/cart",
+      "POST /api/cart"
+    ],
+    "expected_evidence": [
+      "payment_error_span",
+      "charge_exception_invalid_token",
+      "checkout_failure",
+      "payment_health_remains_serving"
+    ],
+    "restoration": "restore exact prior paymentFailure variant, then verify a valid checkout succeeds",
+    "success_criteria": [
+      "fault_observed_on_checkout",
+      "protected_probes_within_policy",
+      "recovery_checkout_succeeds"
+    ]
+  },
+  "Plan": {
+    "schema_version": "1.0.0",
+    "plan_id": "plan-0001",
+    "request_id": "req-0001",
+    "capability_id": "payment-unreachable",
+    "parameters": {},
+    "sandbox": {
+      "docker_context": "default",
+      "daemon_id": "unset",
+      "compose_project": "bosch-chaos-sandbox"
+    },
+    "duration_seconds": 15,
+    "baseline_ref": null,
+    "expected_impact": "checkout returns an error while home, catalog and cart stay healthy",
+    "policy_version": "p0-2026-10-10",
+    "requested_by": "user"
+  },
+  "Run": {
+    "run_id": "run-0001",
+    "plan_id": "plan-0001",
+    "state": "DRAFT",
+    "revisions": {
+      "source": "dedc0178918e260823323b8d95005a8cb924b007",
+      "workload_version": "contract-fixture-only"
+    }
+  },
+  "Event": {
+    "schema_version": "1.0.0",
+    "run_id": "run-0001",
+    "seq": 1,
+    "at": "2026-10-10T10:00:00Z",
+    "type": "state_changed",
+    "state": "BASELINING"
+  },
+  "Observation": {
+    "observation_id": "obs-0001",
+    "run_id": "run-0001",
+    "at": "2026-10-10T10:00:00Z",
+    "probe": "POST /api/checkout",
+    "phase": "baseline",
+    "outcome": "not_observed",
+    "fresh": false,
+    "complete": false
+  },
+  "Diagnosis": {
+    "schema_version": "1.0.0",
+    "run_id": "run-0001",
+    "service": "checkout",
+    "edge": "checkout->payment",
+    "category": "connectivity",
+    "affected_paths": [
+      "POST /api/checkout"
+    ],
+    "cited_observations": [
+      "obs-0004",
+      "obs-0005"
+    ],
+    "alternatives": [
+      "payment process down (health probe contradicts)"
+    ],
+    "uncertainty": "low",
+    "next_action": "compare payment health and checkout RPC status codes"
+  },
+  "Patch": {
+    "patch_id": "patch-0001",
+    "base_revision": "dedc0178918e260823323b8d95005a8cb924b007",
+    "diff_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "affected_files": [
+      "src/checkout/main.go"
+    ],
+    "rationale": "Schema fixture only; no patch exists or is approved."
+  },
+  "Comparison": {
+    "comparison_id": "comparison-0001",
+    "original_run_id": "run-0001",
+    "baseline": {
+      "attempts": 0,
+      "successes": 0,
+      "missing_samples": 0
+    },
+    "fault": {
+      "attempts": 0,
+      "successes": 0,
+      "missing_samples": 0
+    },
+    "recovery": {
+      "attempts": 0,
+      "successes": 0,
+      "missing_samples": 0
+    },
+    "conclusive": false,
+    "limitations": [
+      "Contract fixture only; no measurements."
+    ]
+  }
+}

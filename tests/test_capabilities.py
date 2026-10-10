@@ -118,3 +118,21 @@ def test_grpc_argv_is_fixed_except_validated_payload():
 def test_shop_refuses_non_loopback_url():
     with pytest.raises(PermissionError):
         adapters.Shop("http://payments.example.com", 5)
+
+
+def test_live_drafts_cannot_be_enabled_by_configuration(tools, monkeypatch):
+    plan = Plan.model_validate(propose(tools, "payment-unreachable")["result"])
+    monkeypatch.setattr(runner, "load_policy", lambda: {
+        **load_policy(), "execution_enabled": True, "live_capabilities": [plan.capability_id]})
+    monkeypatch.setattr(runner.sandbox, "load_spec", lambda: {**tools.spec, "approved": True})
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("P0 live refusal must happen before Docker access or application mutation")
+
+    monkeypatch.setattr(runner.sandbox, "collect_snapshot", forbidden)
+    monkeypatch.setattr(runner, "run_lock", forbidden)
+    monkeypatch.setattr(adapters, "valid_checkout", forbidden)
+    with pytest.raises(runner.Unsupported) as refusal:
+        runner.execute(plan, live=True)
+    assert refusal.value.code == "LIVE_EXECUTION_BLOCKED"
+    assert any("P0 supports preview only" in e for e in refusal.value.details["blockers"])

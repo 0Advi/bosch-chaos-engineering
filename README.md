@@ -5,13 +5,39 @@ It combines a pinned OpenTelemetry Astronomy Shop with its existing metrics,
 traces, logs, and workload generator. A separate Python controller will add
 deterministic safety, bounded fault execution, recovery, and evidence reports.
 
-**Current milestone: local shop, cart/checkout, and telemetry startup verified.
-See IMPLEMENTATION_STATUS.md for evidence and remaining work.**
-There is no executable fault command yet.
+**Current milestone: Phase 0 contracts and execution boundary reviewed; local
+shop, cart/checkout, and telemetry startup previously verified.**
+The controller supports validated plans and previews. Live faults remain blocked
+until the baseline and watchdog gates pass. See
+[IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) and the
+[Phase 0 review](docs/phase0-review.md) for evidence and limitations.
 
 See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the phased task backlog,
 five-person ownership split, dependencies, and acceptance checks for the payment
 chaos agent, user workbench, and verified application fixes.
+
+For the presentation narrative, see the [judge brief](docs/judges-brief.md).
+
+## Phase 0 controller checks
+
+```sh
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -r requirements-dev.txt
+make test
+python -m controller.schemas.export --check
+make flags
+make capabilities
+make preflight
+```
+
+Preflight is read-only and exits unsuccessfully until dedicated sandbox identity
+and isolation are approved. This is expected on the current shared preview.
+Versioned records live in `controller/schemas/` and `schemas/`; typed payment
+capabilities and execution policy live in `config/capabilities.yaml` and
+`config/execution_policy.yaml`. The older proposed catalogs remain design references.
+See [controller responsibilities](controller/README.md) and
+[sandbox setup](docs/sandbox.md). No model API is required for Phase 0.
 
 ## Selected components
 
@@ -43,7 +69,10 @@ deploy/                        Selected Compose overlay and Collector adjustment
 scripts/demo.py                Deployment validation/start/stop/smoke helper
 scripts/verify_startup.py       Synthetic checkout and telemetry startup checks
 config/experiments.yaml         Proposed disabled experiment and safety contract
-controller/README.md           Next-phase controller responsibilities
+controller/                    Phase 0 contracts, bounded tools, scope checks and previews
+schemas/                       Exported JSON Schemas for shared records
+tests/                         Contract fixtures and rejection/restoration checks
+controller/README.md           Implemented boundary and remaining responsibilities
 artifacts/dependency_map.static.json  Static, unobserved architecture seed
 docs/architecture-review.md     Source-based architecture and selection rationale
 IMPLEMENTATION_STATUS.md        Evidence, limitations, and next work

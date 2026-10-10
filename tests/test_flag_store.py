@@ -53,3 +53,22 @@ def test_no_temp_files_left_behind(store):
     prior = store.snapshot("paymentUnreachable")
     store.set_variant("paymentUnreachable", "on", prior.sha256)
     assert [p.name for p in store.path.parent.iterdir()] == ["demo.flagd.json"]
+
+
+def test_restore_preserves_disabled_state(store):
+    doc = json.loads(store.path.read_text())
+    doc["flags"]["paymentFailure"]["state"] = "DISABLED"
+    store.path.write_text(json.dumps(doc))
+    original = json.loads(store.path.read_text())
+    prior = store.snapshot("paymentFailure")
+    applied = store.set_variant("paymentFailure", "100%", prior.sha256)
+    assert applied.state == "ENABLED"
+    store.restore(prior, applied.sha256)
+    assert json.loads(store.path.read_text()) == original
+
+
+def test_off_label_with_changed_value_is_not_a_healthy_baseline(store):
+    doc = json.loads(store.path.read_text())
+    doc["flags"]["emitRawPii"]["variants"]["off"] = True
+    store.path.write_text(json.dumps(doc))
+    assert any("emitRawPii differs" in p for p in baseline_problems(store.path))

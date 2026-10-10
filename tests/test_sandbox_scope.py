@@ -36,7 +36,7 @@ def test_dedicated_sandbox_is_approved(tmp_path, approved_spec):
 def test_checked_in_spec_is_never_approved(tmp_path):
     report = sandbox.evaluate(make_snapshot(tmp_path), SPEC, tmp_path)
     assert not report.isolation_approved
-    assert any("not approved" in e for e in report.errors)
+    assert any("not approved" in e for e in report.warnings)
     with pytest.raises(PermissionError):
         sandbox.resolve_target(report, "payment")
 
@@ -76,3 +76,27 @@ def test_collector_host_mounts_are_warnings_not_silent(tmp_path, approved_spec):
     report = sandbox.evaluate(snapshot, approved_spec, tmp_path)
     assert report.isolation_approved
     assert any("docker.sock" in w for w in report.warnings)
+
+
+def test_writable_host_exception_is_rejected(tmp_path, approved_spec):
+    snapshot = make_snapshot(tmp_path)
+    collector = next(c for c in snapshot["containers"] if c["service"] == "otel-collector")
+    collector["mounts"] = [{"type": "bind", "source": "/", "destination": "/hostfs", "rw": True}]
+    report = sandbox.evaluate(snapshot, approved_spec, tmp_path)
+    assert not report.isolation_approved
+    assert any("writable host exception" in e for e in report.errors)
+
+
+def test_scope_can_be_reviewed_before_approval(tmp_path, approved_spec):
+    approved_spec["approved"] = False
+    report = sandbox.evaluate(make_snapshot(tmp_path), approved_spec, tmp_path)
+    assert report.scope_ok
+    assert not report.isolation_approved
+    with pytest.raises(PermissionError):
+        sandbox.resolve_target(report, "payment")
+
+
+def test_approval_requires_boolean_true(tmp_path, approved_spec):
+    approved_spec["approved"] = "false"
+    report = sandbox.evaluate(make_snapshot(tmp_path), approved_spec, tmp_path)
+    assert not report.isolation_approved
