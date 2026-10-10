@@ -1,141 +1,124 @@
+<div align="center">
+
 # Bosch Chaos Engineering
 
-Integrated payment-chaos development platform built around the pinned OpenTelemetry
-Astronomy Shop. The Python controller records bounded experiments, restores faults
-with independent supervision, exports evidence and provides free rule diagnosis.
-The browser workbench now connects to that controller on the same origin.
+**Safe, bounded, evidence-driven payment chaos experiments for microservice systems.**
 
-**P0–P6 code is integrated; live acceptance and the complete payment repair remain
-pending.** P7 packaging, CI and branch delivery are provided, with an explicitly
-simulated demonstration. Execution stays disabled until dedicated sandbox and
-measured-baseline requirements pass. See [current status](IMPLEMENTATION_STATUS.md),
-[release/setup/demo instructions](docs/release-and-demo.md) and the
-[implementation task plan](IMPLEMENTATION_PLAN.md).
+Built around the pinned [OpenTelemetry Astronomy Shop](https://github.com/open-telemetry/opentelemetry-demo) · Bosch Hackathon
 
-```sh
-git submodule update --init --recursive
-python3.13 -m venv .venv
-. .venv/bin/activate
-python -m pip install -r requirements-dev.txt
-make test
-make test-workbench # Node 20+
-make release-check
-make eval-baseline
-make workbench # http://127.0.0.1:8095, real controller state
+![Status](https://img.shields.io/badge/status-hackathon%20prototype-orange)
+![Execution](https://img.shields.io/badge/fault%20execution-disabled%20by%20default-red)
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+![Upstream](https://img.shields.io/badge/OTel%20Demo-3.1.0-6f42c1)
+![License](https://img.shields.io/badge/license-Apache--2.0-green)
+
+[Current status](IMPLEMENTATION_STATUS.md) · [Release & demo guide](docs/release-and-demo.md) · [Task plan](IMPLEMENTATION_PLAN.md) · [Payment failure plan](docs/payment-failure-plan.md)
+
+</div>
+
+---
+
+## Why this project
+
+Chaos engineering is only useful if it is **safe to run** and **easy to learn from**. Most tools inject a fault and leave the operator to guess what happened, or worse, to clean up manually.
+
+Bosch Chaos Engineering is a payment-chaos development platform that treats **safety and evidence as first-class features**:
+
+- **Bounded experiments:** every experiment has a target allowlist, a hard deadline, and abort thresholds.
+- **Independent restoration:** faults are restored by a separate supervisor, not only by the process that injected them.
+- **Evidence by default:** timestamped baseline, fault, rollback and recovery observations are exported with source identifiers.
+- **Free diagnosis:** a rule-based engine explains what happened. No model API key is needed.
+- **One workbench:** a browser UI served from the same origin as the controller, showing real controller state.
+
+## Highlights
+
+| Capability | What it does |
+|---|---|
+| **Deterministic controller** | Python controller records experiments, enforces scope, and previews actions before anything runs. |
+| **Safety contract** | One active experiment at a time, healthy-baseline requirement, hard deadline, threshold abort, missing-observation handling, manual kill switch, automatic restoration, verified recovery. |
+| **Independent supervision** | Restoration is verified by a separate supervisor. |
+| **Evidence export** | Structured JSON records with timestamps and source identifiers, backed by exported JSON Schemas. |
+| **Rule-based diagnosis** | Free, offline diagnosis of experiment outcomes. |
+| **Browser workbench** | Same-origin UI connected to live controller state, plus a fixture mode for demos. |
+| **Reproducible target** | Pinned upstream release (3.1.0), versioned images, isolated Compose project, loopback-only ports. |
+
+## Architecture
+
+```mermaid
+flowchart LR
+    UI[Browser Workbench<br/>127.0.0.1:8095] <--> C[Python Controller<br/>contracts · scope checks · previews]
+    C --> S[Independent Supervisor<br/>restore + verify]
+    C --> E[Evidence Export<br/>JSON + schemas]
+    C --> D[Rule-based Diagnosis]
+    C -->|guarded executor| F[flagd feature flags]
+    F --> SHOP
+
+    subgraph SHOP[Sandbox: OpenTelemetry Astronomy Shop]
+        direction TB
+        APP[Frontend · Checkout · Payment · Cart · Recommendation ...]
+        LOAD[Locust workload]
+    end
+
+    SHOP --> OBS[Collector · Prometheus · Jaeger · OpenSearch · Grafana]
+    OBS --> C
 ```
 
-`make workbench-fixture` serves illustrative records on port 8096. Neither fixture
-records nor the portable `python scripts/demo_controller.py` demonstration certify
-live payment behavior. No model API key is needed for the default workbench flow.
-The [P5/P6 connection guide](docs/p5-p6-integration.md) documents the remaining
-application-test, deployment and replay boundaries.
+## Project status
 
-## Selected components
+This is a hackathon prototype. We are explicit about what is and is not proven.
 
-- Shop: Envoy proxy, Next.js frontend/API, ad, recommendation, product catalog,
-  cart, checkout, currency, payment, email, shipping, quote, and image provider.
-- State: PostgreSQL (`astronomy-db`) and Valkey (`valkey-cart`).
-- Workload and supporting services: Locust, flagd, flagd-ui, and telemetry-docs.
-- Observation: OpenTelemetry Collector, Prometheus, Jaeger, OpenSearch, Grafana,
-  and OpAMP server.
+| Area | State |
+|---|---|
+| P0–P6: controller, contracts, workbench, evidence, diagnosis | Integrated in code |
+| P7: packaging, CI, branch delivery | Provided, with an explicitly **simulated** demonstration |
+| Live acceptance against the running shop | **Pending** |
+| Complete payment repair flow | **Pending** |
+| Fault execution | **Disabled** until dedicated-sandbox and measured-baseline requirements pass |
 
-The selected upstream minimal deployment contains **25 services**. Kafka,
-accounting, fraud detection, the shopping AI agent/MCP/chatbot, and profiling
-services are not enabled. Their code remains available in the pinned upstream
-submodule without becoming runtime dependencies of this configuration.
+> The fixture records and the portable `scripts/demo_controller.py` demonstration are illustrative. They do **not** certify live payment behavior.
 
-Recommendation was the initial proposed bounded outage target. The current
-payment evaluation plan uses upstream payment failure/unreachable flags; see
-[docs/payment-failure-plan.md](docs/payment-failure-plan.md) and the disabled
-[scenario catalog](config/payment_scenarios.proposed.json). The existing controller
-contract in [config/experiments.yaml](config/experiments.yaml) still contains only
-the proposed recommendation outage, with execution disabled. Payment execution
-requires its own baseline, guarded executor, and verified restoration.
+Details: [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) · [P5/P6 integration guide](docs/p5-p6-integration.md)
 
-## Layout
-
-```text
-vendor/opentelemetry-demo/      Pinned Apache-2.0 upstream Git submodule
-deploy/                        Selected Compose overlay and Collector adjustment
-scripts/demo.py                Deployment validation/start/stop/smoke helper
-scripts/verify_startup.py       Synthetic checkout and telemetry startup checks
-config/experiments.yaml         Proposed disabled experiment and safety contract
-controller/                    Phase 0 contracts, bounded tools, scope checks and previews
-schemas/                       Exported JSON Schemas for shared records
-tests/                         Contract fixtures and rejection/restoration checks
-controller/README.md           Implemented boundary and remaining responsibilities
-artifacts/dependency_map.static.json  Static, unobserved architecture seed
-docs/architecture-review.md     Source-based architecture and selection rationale
-IMPLEMENTATION_STATUS.md        Evidence, limitations, and next work
-IMPLEMENTATION_PLAN.md          Tasks, owners, dependencies, and release gates
-docs/local-preview.md           Local URLs and a walkthrough of the current demo
-```
-
-## Prerequisites and isolation
-
-- Python 3.10+, Git, Make, Docker with its daemon running, and Docker Compose
-  **2.24.4+** (needed for overlay reset/override tags).
-- A dedicated local sandbox Docker environment. The controller will need to
-  verify that environment before a future experiment.
-- Upstream estimates about 3 GB RAM for minimal mode and 14 GB disk. Building all
-  language images may require additional time, memory, disk and network access.
-  Actual usage has not been measured for this project.
-
-The overlay removes fixed upstream container names, uses the
-`bosch-chaos-sandbox` project/network, removes backend host ports, and exposes
-only the shop and Prometheus on `127.0.0.1`. This reduces collisions and exposure;
-it is not a substitute for a dedicated sandbox daemon. The upstream Collector
-still mounts the Docker socket and host filesystem for observation. A read-only
-socket mount does not limit Docker API capabilities.
-
-## Obtain and validate
+## Quick start
 
 ```sh
 git clone --recurse-submodules https://github.com/0Advi/bosch-chaos-engineering.git
 cd bosch-chaos-engineering
-make validate
+
+python3.13 -m venv .venv
+. .venv/bin/activate
+python -m pip install -r requirements-dev.txt
+
+make test              # Python test suite
+make test-workbench    # Workbench tests (Node 20+)
+make release-check     # Release gate checks
+make eval-baseline     # Baseline evaluation
+make workbench         # http://127.0.0.1:8095 (real controller state)
 ```
 
-If cloned without submodules, run `make bootstrap`. The helper refuses a changed
-upstream commit and checks selected services, absence of fixed container names,
-loopback-only ports, versioned-image policy, project network, and static-map scope.
-It does not need a running Docker daemon for configuration validation.
-
-Upstream source is pinned to official release **3.1.0**, commit
-`dedc0178918e260823323b8d95005a8cb924b007`. Default startup pulls matching
-`ghcr.io/open-telemetry/demo:3.1.0-<service>` images instead of floating `latest`
-tags. External infrastructure image versions come from the pinned upstream
-`.env`. Record resolved image digests during runtime verification for stronger
-deployment reproducibility.
-
-For development source builds, use `make build` and then
-`BOSCH_SOURCE_BUILD=true make start`. These use separate
-`bosch-local/demo:3.1.0-source-<service>` image names so official images are not
-overwritten. Source builds take longer than the default preview startup.
-
-## Start, check, and stop
-
-Use only the dedicated sandbox runtime:
+Prefer a quick look without the full stack?
 
 ```sh
-make start
-make status
-make smoke
-make verify
+make workbench-fixture            # http://127.0.0.1:8096 (illustrative records)
+python scripts/demo_controller.py # portable simulated demonstration
 ```
 
-`make start` downloads the selected images and waits up to 300 seconds for
-Compose startup/health checks after container creation. Image downloads are not
-bounded by that startup wait. Browser-driven Locust traffic is disabled by
-default to reduce memory use; plain HTTP traffic still exercises shop APIs.
-OpenSearch has a 180-second startup grace period because its JVM initialization
-on this machine exceeded the upstream health check's short allowance.
-The sandbox workload adapter filters out the upstream shopping-agent task because
-that service is excluded. Collector batching uses a one-second timeout, and
-host/container resource polling uses a 30-second interval to reduce local overhead.
-Short-experiment abort decisions will need faster application probes.
+If you cloned without submodules, run `make bootstrap`.
 
-| Interface | Local URL |
+## Running the sandbox shop
+
+**Prerequisites:** Python 3.10+, Git, Make, Docker (daemon running), Docker Compose **2.24.4+**, and a **dedicated local sandbox Docker environment**. Upstream estimates about 3 GB RAM and 14 GB disk for minimal mode; usage for this project has not been measured.
+
+```sh
+make validate   # configuration checks, no Docker daemon needed
+make start      # pull images and start the sandbox (waits up to 300 s for health)
+make status
+make smoke      # home page, products, recommendations, Prometheus readiness
+make verify     # synthetic cart/checkout + telemetry checks → artifacts/startup_verification.json
+make stop       # tear down the Compose project (volumes are not deleted)
+```
+
+| Interface | URL |
 |---|---|
 | Shop | http://localhost:8080/ |
 | Grafana | http://localhost:8080/grafana/ |
@@ -144,54 +127,88 @@ Short-experiment abort decisions will need faster application probes.
 | Feature flags | http://localhost:8080/feature/ |
 | Prometheus | http://localhost:9090/ |
 
-Change `BOSCH_APP_PORT` or `BOSCH_METRICS_PORT` in `deploy/demo.local.env` if needed
-(this machine-specific file is ignored by Git), or set the corresponding
-environment variables for each helper invocation. On the preparation machine,
-the local override uses shop port **8081** because 8080 belongs to another app,
-and `LOCUST_USERS=1` to reduce resource pressure during the preview.
-The official Docker Hub mirror can also be selected with
-`IMAGE_NAME=docker.io/otel/demo` in that file; the same release is published by
-upstream to both registries. The preparation machine uses this mirror because
-its downloads completed faster than GitHub Container Registry.
-`make smoke` checks the home page, products, recommendations, and Prometheus
-readiness. It is not an end-to-end checkout test or a healthy baseline.
+Change `BOSCH_APP_PORT` or `BOSCH_METRICS_PORT` in `deploy/demo.local.env` (Git-ignored) if a port is taken. You can also select the Docker Hub mirror there with `IMAGE_NAME=docker.io/otel/demo`.
 
-`make verify` adds a synthetic demo cart/checkout, checks Grafana, and waits for
-traces, metrics and indexed logs. It saves `artifacts/startup_verification.json`.
-It is a startup check, not a baseline, and does not execute a fault. Further
-verify telemetry freshness and expected synchronous trace edges before any fault. Reuse
-upstream frontend and telemetry tests as appropriate. Its `make` telemetry-test
-targets manage their own deployment/teardown and should not be run unchanged
-against this customized deployment.
+`make smoke` and `make verify` are startup checks. They are **not** a healthy baseline and do not execute a fault. Keep the upstream random feature-flag scheduler idle and failure flags at their resting settings during baseline and Bosch experiments.
 
-```sh
-make stop
+For development source builds: `make build`, then `BOSCH_SOURCE_BUILD=true make start`. These use separate `bosch-local/demo:3.1.0-source-<service>` image names so official images are never overwritten.
+
+## Safety model
+
+Fault injection tooling must be trustworthy before it is powerful. The controller is designed around this contract:
+
+1. **Target allowlist:** only approved services and flags can be touched.
+2. **Single active experiment:** no overlapping faults.
+3. **Healthy baseline required:** no fault on an unhealthy or unmeasured system.
+4. **Hard deadline:** every experiment ends on time.
+5. **Threshold abort:** protected shop workflows trigger rollback when they degrade.
+6. **Missing-observation handling:** no data is treated as unsafe, not as success.
+7. **Manual kill switch:** an operator can always stop and restore.
+8. **Automatic, verified restoration:** recovery is confirmed, not assumed.
+
+Isolation in the Compose overlay: no fixed container names, a dedicated `bosch-chaos-sandbox` project and network, no backend host ports, and only the shop and Prometheus exposed on `127.0.0.1`.
+
+> **Note:** the upstream OpenTelemetry Collector mounts the Docker socket and host filesystem for observation. A read-only socket mount does not limit Docker API capabilities. Use a dedicated sandbox Docker daemon; the overlay reduces collisions and exposure but is not a substitute.
+
+## What the shop runs
+
+The selected upstream minimal deployment has **25 services**:
+
+- **Shop:** Envoy proxy, Next.js frontend/API, ad, recommendation, product catalog, cart, checkout, currency, payment, email, shipping, quote, image provider.
+- **State:** PostgreSQL (`astronomy-db`), Valkey (`valkey-cart`).
+- **Workload and support:** Locust, flagd, flagd-ui, telemetry-docs.
+- **Observation:** OpenTelemetry Collector, Prometheus, Jaeger, OpenSearch, Grafana, OpAMP server.
+
+Kafka, accounting, fraud detection, the shopping AI agent/MCP/chatbot and profiling services are **not enabled**. Their code remains in the pinned submodule without becoming runtime dependencies.
+
+**Experiment target:** payment is the focus, using the upstream payment failure and unreachable flags. See the [payment failure plan](docs/payment-failure-plan.md) and the disabled [scenario catalog](config/payment_scenarios.proposed.json). `config/experiments.yaml` currently holds only the original proposed recommendation outage, with execution disabled. Payment execution needs its own baseline, guarded executor and verified restoration.
+
+## Repository layout
+
+```text
+controller/                     Contracts, bounded tools, scope checks, previews
+schemas/                        Exported JSON Schemas for shared records
+config/experiments.yaml         Disabled experiment and safety contract
+config/payment_scenarios.proposed.json   Proposed payment scenarios (disabled)
+deploy/                         Compose overlay and Collector adjustment
+scripts/demo.py                 Deployment validate/start/stop/smoke helper
+scripts/verify_startup.py       Synthetic checkout and telemetry checks
+scripts/demo_controller.py      Portable simulated demonstration
+tests/                          Contract fixtures, rejection and restoration checks
+artifacts/dependency_map.static.json   Static, unobserved architecture seed
+docs/                           Architecture review, local preview, release/demo, integration
+vendor/opentelemetry-demo/      Pinned Apache-2.0 upstream submodule
 ```
 
-Stop tears down this Compose project without requesting volume deletion. Keep
-the upstream random feature-flag scheduler idle and failure flags at their
-resting settings during baseline and Bosch experiments.
+## Reproducibility
 
-## Next milestone
+- Upstream pinned to official release **3.1.0**, commit `dedc0178918e260823323b8d95005a8cb924b007`. The helper refuses a changed upstream commit.
+- Matching `ghcr.io/open-telemetry/demo:3.1.0-<service>` images are used instead of floating `latest` tags.
+- `make validate` checks selected services, absence of fixed container names, loopback-only ports, versioned-image policy, project network and static-map scope.
+- Record resolved image digests during runtime verification for stronger reproducibility.
 
-After startup succeeds, implement discovery and a repeatable baseline, followed
-by the deterministic controller described in [controller/README.md](controller/README.md).
-It must enforce a target allowlist, one active experiment, healthy baseline,
-hard deadline, threshold abort, missing-observation handling, manual kill switch,
-automatic restoration, and verified application recovery.
+## Roadmap
 
-Fast bounded API probes are needed for short-experiment decisions; existing
-metrics export/view intervals can be too slow. Measure affected recommendation
-requests separately from protected shop workflows. Save real baseline, fault,
-rollback and recovery observations with timestamps and source identifiers.
+- [ ] Discovery and a repeatable, measured baseline
+- [ ] Fast bounded API probes for short-experiment abort decisions
+- [ ] Guarded payment executor with verified restoration
+- [ ] Live acceptance run with saved, timestamped baseline / fault / rollback / recovery evidence
+- [ ] Complete payment repair flow
+- [ ] Enable execution once sandbox and baseline gates pass
 
-The static map is intentionally named `dependency_map.static.json`. It does not
-prove runtime dependencies or satisfy the measured Day 1 checkpoint.
+Affected recommendation requests will be measured separately from protected shop workflows.
+
+## Known limitations
+
+- Live behavior is unverified. Current results come from fixtures and simulation.
+- `dependency_map.static.json` is a static seed, not proof of runtime dependencies.
+- Resource usage is not yet measured for this project.
+- Default telemetry intervals can be too slow for short-experiment decisions.
+- Upstream `make` telemetry-test targets manage their own deployment and should not be run unchanged against this customized deployment.
 
 ## License and references
 
-Apache-2.0; see [LICENSE](LICENSE) and [NOTICE](NOTICE). Upstream attribution and
-licenses remain in the submodule.
+Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE). Upstream attribution and licenses remain in the submodule.
 
 - [OpenTelemetry Demo](https://github.com/open-telemetry/opentelemetry-demo)
 - [Official architecture](https://opentelemetry.io/docs/demo/architecture/)
