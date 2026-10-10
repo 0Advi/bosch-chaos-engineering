@@ -395,3 +395,35 @@ class Comparison(Contract):
     differences: list[str] = []
     limitations: list[str] = []
     conclusive: bool
+
+
+# ------------------------------------------------------------------- report
+class TimelineEntry(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    seq: Annotated[int, Field(ge=1)]
+    at: datetime
+    state: RunState
+    stop_reason: Optional[StopReason] = None
+    by: Optional[str] = None
+
+
+class RunReport(Contract):
+    """Deterministic report rebuilt from saved run evidence only (P3-01)."""
+    report_id: Identifier
+    run_id: Identifier
+    capability_id: Identifier
+    plan: dict
+    state: RunState
+    stop_reason: Optional[StopReason] = None
+    terminal: bool
+    cleanup_status: Literal["not_started", "pending", "not_required", "verified", "needs_attention"]
+    timeline: list[TimelineEntry]
+    injection: Optional[dict] = None
+    comparison: Comparison
+    protected: dict
+    baseline_reference: Optional[dict] = None
+    conclusive: bool
+    impact_observed: Optional[bool] = None
+    missing_data: list[str]
+    limitations: list[str]
+    evidence: dict

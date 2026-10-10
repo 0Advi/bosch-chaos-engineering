@@ -74,9 +74,13 @@ def live_gates(plan: Plan, cap: Capability, policy: dict, spec: dict, env: Envir
     blockers = []
     if not is_live(policy, cap.id):
         blockers.append(f"{cap.id} is not listed as live in config/execution_policy.yaml")
-    report = env.sandbox_report()
-    if not report.isolation_approved:
-        blockers += [f"sandbox: {e}" for e in report.errors] or ["sandbox: not approved"]
+    try:
+        report = env.sandbox_report()
+    except (OSError, subprocess.SubprocessError, ValueError) as error:
+        blockers.append(f"sandbox: Docker inspection unavailable ({type(error).__name__}); isolation unverified")
+    else:
+        if not report.isolation_approved:
+            blockers += [f"sandbox: {e}" for e in report.errors] or ["sandbox: not approved"]
     ref = plan.sandbox
     if (ref.docker_context, ref.daemon_id, ref.compose_project) != (
             spec["docker_context"], spec["daemon_id"], spec["compose_project"]):
@@ -114,6 +118,10 @@ class Runner:
                        "protected": {"samples": 0, "failures": 0}}
 
     def run(self, plan: Plan, cap: Capability, params: dict) -> dict:
+        return self.drive(self.create(plan), plan, cap, params)
+
+    def create(self, plan: Plan) -> str:
+        """Record the run (DRAFT) and start its watchdog; rejects duplicates/overlap."""
         run_id = f"run-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}-{uuid4().hex[:6]}"
         try:
             self.store.create(run_id, plan, os.getpid())
@@ -122,6 +130,10 @@ class Runner:
         except RunInProgress as busy:
             raise Unsupported("RUN_IN_PROGRESS", str(busy), run_id=busy.run_id, state=busy.state)
         self._spawn_watchdog(run_id)
+        return run_id
+
+    def drive(self, run_id: str, plan: Plan, cap: Capability, params: dict) -> dict:
+        """Execute a created run to a terminal or NEEDS_ATTENTION state."""
         previous = self._install_signals()
         reason = R.COMPLETED
         try:
@@ -317,15 +329,20 @@ class Runner:
 
 
 # --------------------------------------------------------------- entrypoint
-def execute(plan: Plan, live: bool = False, *, env: Optional[Environment] = None,
-            store: Optional[RunStore] = None, limits: Optional[RunLimits] = None,
-            gate_check: Optional[Callable[[Plan, Capability], list[str]]] = None,
-            log: Callable[[str], None] = print) -> dict:
+def dry_run(plan: Plan) -> dict:
     catalog, policy, spec = Catalog(), load_policy(), sandbox.load_spec()
     cap, params = validate(plan, catalog, policy)
     actions = adapters.describe(cap, params, spec["network"], endpoints.app_url())
-    if not live:
-        return {"mode": "dry_run", "capability": cap.id, "parameters": params, "actions": actions}
+    return {"mode": "dry_run", "capability": cap.id, "parameters": params, "actions": actions}
+
+
+def prepare(plan: Plan, *, env: Optional[Environment] = None, store: Optional[RunStore] = None,
+            limits: Optional[RunLimits] = None,
+            gate_check: Optional[Callable[[Plan, Capability], list[str]]] = None,
+            log: Callable[[str], None] = print) -> tuple[Runner, Capability, dict]:
+    """Validate and gate a live plan without creating any run state."""
+    catalog, policy, spec = Catalog(), load_policy(), sandbox.load_spec()
+    cap, params = validate(plan, catalog, policy)
     env = env or LiveEnvironment(spec)
     blockers = gate_check(plan, cap) if gate_check else live_gates(plan, cap, policy, spec, env)
     try:
@@ -339,4 +356,19 @@ def execute(plan: Plan, live: bool = False, *, env: Optional[Environment] = None
                           blockers=blockers)
     store = store or RunStore(DB_PATH)
     reconcile_orphans(store, env)
-    return Runner(store, env, limits, log).run(plan, cap, params)
+    return Runner(store, env, limits, log), cap, params
+
+
+def execute(plan: Plan, live: bool = False, *, env: Optional[Environment] = None,
+            store: Optional[RunStore] = None, limits: Optional[RunLimits] = None,
+            gate_check: Optional[Callable[[Plan, Capability], list[str]]] = None,
+            log: Callable[[str], None] = print, results_dir: Optional[Path] = None) -> dict:
+    if not live:
+        return dry_run(plan)
+    run, cap, params = prepare(plan, env=env, store=store, limits=limits, gate_check=gate_check, log=log)
+    summary = run.run(plan, cap, params)
+    # Persist sanitized evidence and the report next to the run (P3-01).
+    from ..report.evidence import export_run
+    summary["evidence"] = str(export_run(run.store, summary["run_id"],
+                                         results_dir or run.store.path.parent))
+    return summary

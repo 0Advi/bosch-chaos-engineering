@@ -120,6 +120,11 @@ class RunStore:
             " ORDER BY created_at", TERMINAL_VALUES).fetchall()
         return [self.get(r["run_id"]) for r in rows]
 
+    def recent_runs(self, limit: int = 20) -> list[dict]:
+        rows = self.db.execute("SELECT run_id FROM runs ORDER BY created_at DESC LIMIT ?",
+                               (max(1, min(limit, 200)),)).fetchall()
+        return [self.get(r["run_id"]) for r in rows]
+
     def events(self, run_id: str, after_seq: int = 0) -> list[Event]:
         rows = self.db.execute("SELECT body FROM events WHERE run_id = ? AND seq > ? ORDER BY seq",
                                (run_id, after_seq)).fetchall()

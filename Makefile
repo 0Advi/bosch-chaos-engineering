@@ -1,7 +1,7 @@
 PYTHON ?= python3
 
 .PHONY: help bootstrap validate build start stop status smoke verify test schemas preflight flags capabilities \
-	probe baseline derive-policy runs abort reconcile
+	probe baseline derive-policy runs abort reconcile api report test-sandbox
 help:
 	@echo "bootstrap  Fetch pinned upstream source"
 	@echo "validate   Validate the selected deployment without starting containers"
@@ -22,6 +22,9 @@ help:
 	@echo "runs       Show unfinished fault runs"
 	@echo "abort RUN=<id>  Abort a run; it is restored and recovery is verified"
 	@echo "reconcile  Restore runs whose controller died (after a crash/restart)"
+	@echo "api        Start the local controller API on http://127.0.0.1:8765"
+	@echo "report RUN=<id>  Export evidence and print the run report"
+	@echo "test-sandbox  Opt-in checks against the running dedicated sandbox"
 
 bootstrap:
 	git submodule update --init --recursive
@@ -61,3 +64,9 @@ abort:
 	$(PYTHON) -m controller.cli abort $(RUN)
 reconcile:
 	$(PYTHON) -m controller.cli reconcile
+api:
+	$(PYTHON) -m controller.cli serve
+report:
+	$(PYTHON) -m controller.cli report $(RUN)
+test-sandbox:
+	BOSCH_SANDBOX_TESTS=1 $(PYTHON) -m pytest -q -s -m sandbox tests/integration

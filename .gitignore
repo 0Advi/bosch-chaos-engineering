@@ -9,3 +9,4 @@ artifacts/baseline.json
 artifacts/dependency_map.json
 artifacts/results/
 artifacts/resolved-compose.json
+test-results/
