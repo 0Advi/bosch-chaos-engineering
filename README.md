@@ -9,6 +9,10 @@ deterministic safety, bounded fault execution, recovery, and evidence reports.
 See IMPLEMENTATION_STATUS.md for evidence and remaining work.**
 There is no executable fault command yet.
 
+See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the phased task backlog,
+five-person ownership split, dependencies, and acceptance checks for the payment
+chaos agent, user workbench, and verified application fixes.
+
 ## Selected components
 
 - Shop: Envoy proxy, Next.js frontend/API, ad, recommendation, product catalog,
@@ -43,6 +47,7 @@ controller/README.md           Next-phase controller responsibilities
 artifacts/dependency_map.static.json  Static, unobserved architecture seed
 docs/architecture-review.md     Source-based architecture and selection rationale
 IMPLEMENTATION_STATUS.md        Evidence, limitations, and next work
+IMPLEMENTATION_PLAN.md          Tasks, owners, dependencies, and release gates
 docs/local-preview.md           Local URLs and a walkthrough of the current demo
 ```
 
