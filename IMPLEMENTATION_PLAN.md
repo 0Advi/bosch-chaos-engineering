@@ -154,20 +154,20 @@ Model analysis and the separate patch/replay lifecycle follow recovery.
 
 ### P0 — Contracts and execution boundary
 
-- [ ] **P0-01 — Specify the dedicated sandbox.** Owner M1; reviewer M5.
+- [x] **P0-01 — Specify the dedicated sandbox.** Owner M1; reviewer M5.
   Resolve Docker context/daemon identity, project labels, exact service/container
   IDs and allowed mounts. Document how to provision a dedicated environment on
   a suitably resourced machine. Reject unrelated runtimes and targets.
   **Done when:** scope checks have positive and negative fixtures; the current
   shared preview cannot be mistaken for approved isolation.
 
-- [ ] **P0-02 — Define schemas and API contracts.** Owner M4; reviewers M1/M3.
+- [x] **P0-02 — Define schemas and API contracts.** Owner M4; reviewers M1/M3.
   Implement versioned shared contracts and example payloads from section 4.
   Specify resumable event sequences and state transition rules.
   **Done when:** controller, UI and agent fixtures validate against the same
   schemas; malformed plans and illegal transitions are rejected.
 
-- [ ] **P0-03 — Create sandbox-owned flag configuration.** Owner M1; reviewer M2.
+- [x] **P0-03 — Create sandbox-owned flag configuration.** Owner M1; reviewer M2.
   Copy the pinned flag definitions under `deploy/`, mount the same directory
   into flagd and its viewer, and make the runner the sole writer during a run.
   Disable random scheduling and conflicting UI edits. Verify file replacement
@@ -175,11 +175,16 @@ Model analysis and the separate patch/replay lifecycle follow recovery.
   **Done when:** no automated upstream edits are needed; baseline settings and
   exact state snapshots are reproducible.
 
-- [ ] **P0-04 — Define the capability and agent boundaries.** Owner M3; reviewer M1.
+- [x] **P0-04 — Define the capability and agent boundaries.** Owner M3; reviewer M1.
   Convert the proposed payment catalog into typed capability contracts while
   keeping execution disabled. Specify tool inputs, outputs, errors and limits.
   **Done when:** unsupported capabilities return a structured explanation;
   model proposals cannot create arbitrary commands, paths or targets.
+
+**Review:** Phase 0 foundation accepted with 93 passing tests and read-only flag
+mount/reload verification. See [Phase 0 review](docs/phase0-review.md). The
+dedicated runtime remains unapproved; fault-value evaluation and sole-writer
+enforcement during active runs must be exercised with the P2 safety gates.
 
 **Gate:** agreed contracts and sandbox preparation; no live fault enabled yet.
 
@@ -478,5 +483,5 @@ to silently relax execution requirements.
 - [ ] GitHub CI passes; docs distinguish completed, experimental and unsupported
   capabilities; published evidence is sanitized.
 
-Immediate next task: **P0-01 through P0-03, followed by P1 healthy-baseline work.**
+Immediate next task: **P1 repeatable workload, telemetry freshness and healthy-baseline work.**
 No task in this plan authorizes enabling faults before those execution gates pass.

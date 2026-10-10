@@ -66,13 +66,20 @@ services:
     container_name: !reset null
     ports: !reset []
     pull_policy: ${BOSCH_PULL_POLICY:-missing}
+  # P0-03: flags come from the sandbox-owned copy; the controller is the only
+  # writer. flagd-ui mounts it read-only, so UI edits and its random scheduler
+  # cannot change flags during a run.
   flagd:
     container_name: !reset null
     ports: !reset []
+    volumes: !override
+      - ../../deploy/flagd:/etc/flagd:ro
   flagd-ui:
     container_name: !reset null
     ports: !reset []
     pull_policy: ${BOSCH_PULL_POLICY:-missing}
+    volumes: !override
+      - ../../deploy/flagd:/app/data:ro
   telemetry-docs:
     container_name: !reset null
     ports: !reset []

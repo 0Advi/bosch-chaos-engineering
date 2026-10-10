@@ -1,0 +1,125 @@
+{
+  "$defs": {
+    "SandboxRef": {
+      "additionalProperties": false,
+      "properties": {
+        "compose_project": {
+          "title": "Compose Project",
+          "type": "string"
+        },
+        "daemon_id": {
+          "title": "Daemon Id",
+          "type": "string"
+        },
+        "docker_context": {
+          "title": "Docker Context",
+          "type": "string"
+        }
+      },
+      "required": [
+        "docker_context",
+        "daemon_id",
+        "compose_project"
+      ],
+      "title": "SandboxRef",
+      "type": "object"
+    }
+  },
+  "$id": "bosch-chaos/plan/1.0.0",
+  "additionalProperties": false,
+  "properties": {
+    "baseline_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Baseline Ref"
+    },
+    "capability_id": {
+      "pattern": "^[a-z0-9][a-z0-9-]{1,63}$",
+      "title": "Capability Id",
+      "type": "string"
+    },
+    "duration_seconds": {
+      "maximum": 30,
+      "minimum": 0,
+      "title": "Duration Seconds",
+      "type": "integer"
+    },
+    "expected_impact": {
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "Expected Impact",
+      "type": "string"
+    },
+    "parameters": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "string"
+          }
+        ]
+      },
+      "default": {},
+      "title": "Parameters",
+      "type": "object"
+    },
+    "plan_id": {
+      "pattern": "^[a-z0-9][a-z0-9-]{1,63}$",
+      "title": "Plan Id",
+      "type": "string"
+    },
+    "policy_version": {
+      "title": "Policy Version",
+      "type": "string"
+    },
+    "request_id": {
+      "pattern": "^[a-z0-9][a-z0-9-]{1,63}$",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "requested_by": {
+      "enum": [
+        "user",
+        "agent"
+      ],
+      "title": "Requested By",
+      "type": "string"
+    },
+    "sandbox": {
+      "$ref": "#/$defs/SandboxRef"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "enum": [
+        "1.0.0"
+      ],
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "plan_id",
+    "request_id",
+    "capability_id",
+    "sandbox",
+    "duration_seconds",
+    "expected_impact",
+    "policy_version",
+    "requested_by"
+  ],
+  "title": "Plan",
+  "type": "object"
+}

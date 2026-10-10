@@ -1,0 +1,282 @@
+{
+  "$defs": {
+    "AdapterKind": {
+      "enum": [
+        "flag",
+        "checkout_request_fixture",
+        "payment_grpc_fixture",
+        "container_stop"
+      ],
+      "title": "AdapterKind",
+      "type": "string"
+    },
+    "DurationLimits": {
+      "additionalProperties": false,
+      "properties": {
+        "default_seconds": {
+          "maximum": 30,
+          "minimum": 0,
+          "title": "Default Seconds",
+          "type": "integer"
+        },
+        "max_seconds": {
+          "maximum": 30,
+          "minimum": 0,
+          "title": "Max Seconds",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "default_seconds",
+        "max_seconds"
+      ],
+      "title": "DurationLimits",
+      "type": "object"
+    },
+    "Execution": {
+      "enum": [
+        "disabled",
+        "preview"
+      ],
+      "title": "Execution",
+      "type": "string"
+    },
+    "Family": {
+      "enum": [
+        "payment_unavailable",
+        "currency_amount_mismatch",
+        "duplicate_payment"
+      ],
+      "title": "Family",
+      "type": "string"
+    },
+    "ParamSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "choices": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Choices"
+        },
+        "default": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Default"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "maximum": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Maximum"
+        },
+        "minimum": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Minimum"
+        },
+        "name": {
+          "pattern": "^[a-z][a-z0-9_]{0,31}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "int",
+            "enum",
+            "bool"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "description",
+        "default"
+      ],
+      "title": "ParamSpec",
+      "type": "object"
+    }
+  },
+  "$id": "bosch-chaos/capability/1.0.0",
+  "additionalProperties": false,
+  "properties": {
+    "adapter": {
+      "$ref": "#/$defs/AdapterKind"
+    },
+    "adapter_config": {
+      "description": "Fixed operator-owned settings; never supplied by a plan or model.",
+      "title": "Adapter Config",
+      "type": "object"
+    },
+    "adapter_version": {
+      "title": "Adapter Version",
+      "type": "string"
+    },
+    "affected_dependency": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Affected Dependency"
+    },
+    "affected_probes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Affected Probes",
+      "type": "array"
+    },
+    "disabled_reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Disabled Reason"
+    },
+    "duration": {
+      "$ref": "#/$defs/DurationLimits"
+    },
+    "execution": {
+      "$ref": "#/$defs/Execution"
+    },
+    "expected_evidence": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Expected Evidence",
+      "type": "array"
+    },
+    "family": {
+      "$ref": "#/$defs/Family"
+    },
+    "id": {
+      "pattern": "^[a-z0-9][a-z0-9-]{1,63}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "observations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Observations",
+      "type": "array"
+    },
+    "parameters": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ParamSpec"
+      },
+      "title": "Parameters",
+      "type": "array"
+    },
+    "prerequisites": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Prerequisites",
+      "type": "array"
+    },
+    "protected_probes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Protected Probes",
+      "type": "array"
+    },
+    "restoration": {
+      "title": "Restoration",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "enum": [
+        "1.0.0"
+      ],
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "success_criteria": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Success Criteria",
+      "type": "array"
+    },
+    "target_service": {
+      "title": "Target Service",
+      "type": "string"
+    },
+    "title": {
+      "title": "Title",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "title",
+    "family",
+    "adapter",
+    "adapter_version",
+    "execution",
+    "target_service",
+    "prerequisites",
+    "duration",
+    "observations",
+    "affected_probes",
+    "protected_probes",
+    "expected_evidence",
+    "restoration",
+    "success_criteria"
+  ],
+  "title": "Capability",
+  "type": "object"
+}

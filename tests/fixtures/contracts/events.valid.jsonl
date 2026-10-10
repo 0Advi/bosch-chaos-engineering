@@ -1,0 +1,10 @@
+{"schema_version":"1.0.0","run_id":"run-0001","seq":1,"at":"2026-10-10T10:00:00Z","type":"state_changed","state":"BASELINING"}
+{"schema_version":"1.0.0","run_id":"run-0001","seq":2,"at":"2026-10-10T10:00:05Z","type":"observation","state":"BASELINING","data":{"phase":"baseline","http_status":200}}
+{"schema_version":"1.0.0","run_id":"run-0001","seq":3,"at":"2026-10-10T10:00:06Z","type":"state_changed","state":"READY"}
+{"schema_version":"1.0.0","run_id":"run-0001","seq":4,"at":"2026-10-10T10:00:07Z","type":"state_changed","state":"ARMED"}
+{"schema_version":"1.0.0","run_id":"run-0001","seq":5,"at":"2026-10-10T10:00:08Z","type":"state_changed","state":"RUNNING"}
+{"schema_version":"1.0.0","run_id":"run-0001","seq":6,"at":"2026-10-10T10:00:08Z","type":"action_applied","state":"RUNNING","data":{"flag":"paymentUnreachable","variant":"on"}}
+{"schema_version":"1.0.0","run_id":"run-0001","seq":7,"at":"2026-10-10T10:00:23Z","type":"state_changed","state":"RESTORING","stop_reason":"completed"}
+{"schema_version":"1.0.0","run_id":"run-0001","seq":8,"at":"2026-10-10T10:00:23Z","type":"action_restored","state":"RESTORING","stop_reason":"completed","data":{"flag":"paymentUnreachable","variant":"off"}}
+{"schema_version":"1.0.0","run_id":"run-0001","seq":9,"at":"2026-10-10T10:00:24Z","type":"state_changed","state":"VERIFYING_RECOVERY","stop_reason":"completed"}
+{"schema_version":"1.0.0","run_id":"run-0001","seq":10,"at":"2026-10-10T10:00:30Z","type":"state_changed","state":"RECOVERED","stop_reason":"completed"}

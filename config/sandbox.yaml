@@ -1,0 +1,48 @@
+schema_version: 1
+# Dedicated sandbox specification (P0-01). See docs/sandbox.md.
+# approved stays false on a shared/preview machine. Set it to true only on a
+# dedicated Docker daemon after recording the identity below in a reviewed PR.
+approved: false
+docker_context: default
+daemon_id: ""            # docker info --format '{{.ID}}' on the dedicated machine
+compose_project: bosch-chaos-sandbox
+network: bosch-chaos-sandbox
+require_dedicated_daemon: true   # no containers from other projects on the daemon
+expected_services:
+  - ad
+  - astronomy-db
+  - cart
+  - checkout
+  - currency
+  - email
+  - flagd
+  - flagd-ui
+  - frontend
+  - frontend-proxy
+  - grafana
+  - image-provider
+  - jaeger
+  - load-generator
+  - opamp-server
+  - opensearch
+  - otel-collector
+  - payment
+  - product-catalog
+  - prometheus
+  - quote
+  - recommendation
+  - shipping
+  - telemetry-docs
+  - valkey-cart
+# The only services an adapter may resolve to a container ID.
+mutable_services: [payment]
+# Bind-mount sources must sit under these repo-relative directories.
+allowed_bind_roots:
+  - vendor/opentelemetry-demo
+  - deploy
+# Upstream mounts outside the repo, accepted per service and reported as warnings.
+bind_exceptions:
+  otel-collector:
+    - /
+    - /var/run/docker.sock
+    - /run/host-services/docker.proxy.sock

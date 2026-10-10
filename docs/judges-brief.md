@@ -211,7 +211,8 @@ evaluation needs those additions before retry safety can be demonstrated.
 
 **Today:** the public repository, pinned open-source application, deployment
 helpers, static architecture seed, local startup evidence and project plans
-exist. Startup verification observed the shop, cart/checkout and telemetry
+exist. Phase 0 adds tested shared schemas, scoped capability tools, sandbox checks
+and sandbox-owned flags; live execution remains blocked. Startup verification observed the shop, cart/checkout and telemetry
 working. The interface is a concept. A stable healthy baseline, observed map,
 guarded live experiment, diagnostic agent, working workbench and verified fix
 remain pending. Dedicated runtime isolation still needs verification.

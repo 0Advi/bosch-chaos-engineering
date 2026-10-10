@@ -1,0 +1,11 @@
+schema_version: 1
+# Execution policy for payment capabilities. P0 gate: nothing is live.
+# Enabling a capability requires: execution_enabled: true, its ID in
+# live_capabilities, an approved config/sandbox.yaml, and a reviewed PR (P2).
+policy_version: "p0-2026-10-10"
+execution_enabled: false
+live_capabilities: []
+max_duration_seconds: 30
+app_url: http://127.0.0.1:8080        # frontend-proxy loopback binding (BOSCH_APP_PORT)
+request_timeout_seconds: 10           # provisional; P1-04 derives it from the baseline
+recovery_checks: 3                    # valid checkouts that must pass after restoration
