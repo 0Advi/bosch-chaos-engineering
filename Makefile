@@ -42,3 +42,11 @@ flags:
 	$(PYTHON) scripts/verify_flags.py
 capabilities:
 	$(PYTHON) -m controller.cli capabilities
+
+# Node 20+ is required for the browser-independent workbench tests.
+NODE ?= node
+.PHONY: workbench test-workbench
+workbench:
+	$(PYTHON) -m workbench.server --port 8095
+test-workbench:
+	$(NODE) --test workbench/state.test.mjs

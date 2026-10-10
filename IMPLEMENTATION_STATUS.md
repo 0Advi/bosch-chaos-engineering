@@ -18,6 +18,15 @@ measurements and independent watchdog/abort/recovery verification remain pending
 See [the review](docs/phase0-review.md). These checks do not refresh the startup
 workflow evidence below.
 
+## Parallel P5/P6 preparation
+
+A local workbench now validates preview plans and displays labeled fixture
+progress, evidence, history, patch review and comparison. Isolated patch preparation,
+revision/test/image/target approval checks and backend-neutral rollback/replay logic
+are implemented and tested. Live execution and patch deployment remain disabled.
+See [the handoff](docs/p5-p6-integration.md) for connection points and pending acceptance.
+No runtime improvement is claimed; pinned upstream source remains unchanged.
+
 ## Completed
 
 - Public repository and licensed, pinned OpenTelemetry Astronomy Shop source.

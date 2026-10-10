@@ -42,6 +42,14 @@ capabilities and execution policy live in `config/capabilities.yaml` and
 See [controller responsibilities](controller/README.md) and
 [sandbox setup](docs/sandbox.md). No model API is required for Phase 0.
 
+## Parallel P5/P6 preparation
+
+The fixture workbench and isolated patch tools are documented in
+[the integration handoff](docs/p5-p6-integration.md). Start the workbench with
+`make workbench PYTHON=.venv/bin/python` and open http://127.0.0.1:8095.
+Its sample runs are illustrative and all live mutations are blocked. P1–P4
+backend integration and real-sandbox acceptance remain required.
+
 ## Selected components
 
 - Shop: Envoy proxy, Next.js frontend/API, ad, recommendation, product catalog,

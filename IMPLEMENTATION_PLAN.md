@@ -330,6 +330,11 @@ Dependencies: P3; adapter/context/schema work can begin earlier using fixtures.
 
 ### P5 — Functional user workbench
 
+**Parallel preparation:** `workbench/` implements the five views against labeled
+fixtures; `improvements/` adds isolated patch/review/rollback/comparison boundaries.
+See [the P5/P6 handoff](docs/p5-p6-integration.md). Acceptance remains pending real
+P1–P4 integration and dedicated-sandbox evidence; the checkboxes below stay open.
+
 - [ ] **P5-01 — Build planning and readiness screens.** Owner M4; reviewer M1.
   Translate the concept into real UI: sandbox identity, capability selection,
   natural-language request, proposed scope/duration and execution prerequisites.

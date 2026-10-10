@@ -1,0 +1,743 @@
+{
+  "snapshot": {
+    "mode": "fixture",
+    "readiness": {
+      "sandbox": {
+        "docker_context": "default",
+        "daemon_id": "unset",
+        "compose_project": "bosch-chaos-sandbox"
+      },
+      "execution_enabled": false,
+      "live_capabilities": [],
+      "isolation_approved": false,
+      "baseline_healthy": false,
+      "watchdog_ready": false,
+      "protected_path_status": "Illustrative only",
+      "blockers": [
+        "P1\u2013P4 integration and runtime acceptance pending."
+      ]
+    },
+    "capabilities": [
+      {
+        "schema_version": "1.0.0",
+        "id": "payment-unreachable",
+        "title": "Checkout cannot reach the payment service",
+        "family": "payment_unavailable",
+        "adapter": "flag",
+        "adapter_version": "1",
+        "execution": "preview",
+        "disabled_reason": null,
+        "target_service": "checkout",
+        "affected_dependency": "payment",
+        "parameters": [],
+        "prerequisites": [
+          "dedicated_verified_sandbox",
+          "stable_measured_baseline",
+          "fresh_correlated_observations",
+          "isolated_flag_storage"
+        ],
+        "duration": {
+          "default_seconds": 15,
+          "max_seconds": 30
+        },
+        "observations": [
+          "checkout_http_status",
+          "checkout_rpc_error",
+          "payment_health",
+          "cart_retained"
+        ],
+        "affected_probes": [
+          "POST /api/checkout"
+        ],
+        "protected_probes": [
+          "GET /",
+          "GET /api/products",
+          "GET /api/cart",
+          "POST /api/cart"
+        ],
+        "expected_evidence": [
+          "outgoing_charge_connection_error",
+          "checkout_failure",
+          "payment_can_remain_healthy"
+        ],
+        "restoration": "restore exact prior paymentUnreachable variant, then verify a valid checkout succeeds",
+        "success_criteria": [
+          "fault_observed_on_checkout",
+          "protected_probes_within_policy",
+          "recovery_checkout_succeeds"
+        ]
+      },
+      {
+        "schema_version": "1.0.0",
+        "id": "payment-handler-failure",
+        "title": "Payment Charge handler rejects requests",
+        "family": "payment_unavailable",
+        "adapter": "flag",
+        "adapter_version": "1",
+        "execution": "preview",
+        "disabled_reason": null,
+        "target_service": "payment",
+        "affected_dependency": null,
+        "parameters": [
+          {
+            "name": "failure_rate",
+            "type": "enum",
+            "description": "paymentFailure variant to apply",
+            "default": "100%",
+            "minimum": null,
+            "maximum": null,
+            "choices": [
+              "10%",
+              "25%",
+              "50%",
+              "75%",
+              "100%"
+            ]
+          }
+        ],
+        "prerequisites": [
+          "dedicated_verified_sandbox",
+          "stable_measured_baseline",
+          "fresh_correlated_observations",
+          "isolated_flag_storage"
+        ],
+        "duration": {
+          "default_seconds": 15,
+          "max_seconds": 30
+        },
+        "observations": [
+          "checkout_http_status",
+          "payment_error_span",
+          "cart_retained"
+        ],
+        "affected_probes": [
+          "POST /api/checkout"
+        ],
+        "protected_probes": [
+          "GET /",
+          "GET /api/products",
+          "GET /api/cart",
+          "POST /api/cart"
+        ],
+        "expected_evidence": [
+          "payment_error_span",
+          "charge_exception_invalid_token",
+          "checkout_failure",
+          "payment_health_remains_serving"
+        ],
+        "restoration": "restore exact prior paymentFailure variant, then verify a valid checkout succeeds",
+        "success_criteria": [
+          "fault_observed_on_checkout",
+          "protected_probes_within_policy",
+          "recovery_checkout_succeeds"
+        ]
+      },
+      {
+        "schema_version": "1.0.0",
+        "id": "payment-process-outage",
+        "title": "Stop the sandbox payment container",
+        "family": "payment_unavailable",
+        "adapter": "container_stop",
+        "adapter_version": "0",
+        "execution": "disabled",
+        "disabled_reason": "X-01 needs the watchdog (P2-03) before a container may be stopped",
+        "target_service": "payment",
+        "affected_dependency": null,
+        "parameters": [],
+        "prerequisites": [
+          "dedicated_verified_sandbox",
+          "stable_measured_baseline",
+          "fresh_correlated_observations",
+          "independent_watchdog"
+        ],
+        "duration": {
+          "default_seconds": 15,
+          "max_seconds": 30
+        },
+        "observations": [
+          "checkout_http_status",
+          "payment_container_state",
+          "payment_health"
+        ],
+        "affected_probes": [
+          "POST /api/checkout"
+        ],
+        "protected_probes": [
+          "GET /",
+          "GET /api/products",
+          "GET /api/cart",
+          "POST /api/cart"
+        ],
+        "expected_evidence": [
+          "payment_container_exited",
+          "checkout_failure"
+        ],
+        "restoration": "start the same container ID and verify health and a valid checkout",
+        "success_criteria": [
+          "container_restarted",
+          "recovery_checkout_succeeds"
+        ]
+      },
+      {
+        "schema_version": "1.0.0",
+        "id": "checkout-currency-mismatch",
+        "title": "Checkout with a currency the currency service cannot convert",
+        "family": "currency_amount_mismatch",
+        "adapter": "checkout_request_fixture",
+        "adapter_version": "1",
+        "execution": "preview",
+        "disabled_reason": null,
+        "target_service": "checkout",
+        "affected_dependency": "currency",
+        "parameters": [
+          {
+            "name": "currency_code",
+            "type": "enum",
+            "description": "user_currency sent to PlaceOrder",
+            "default": "XXX",
+            "minimum": null,
+            "maximum": null,
+            "choices": [
+              "XXX",
+              "ZZZ",
+              "usd",
+              ""
+            ]
+          },
+          {
+            "name": "attempts",
+            "type": "int",
+            "description": "sequential synthetic checkouts, each with a fresh cart",
+            "default": 3,
+            "minimum": 1,
+            "maximum": 5,
+            "choices": null
+          }
+        ],
+        "prerequisites": [
+          "dedicated_verified_sandbox",
+          "stable_measured_baseline",
+          "fresh_correlated_observations"
+        ],
+        "duration": {
+          "default_seconds": 0,
+          "max_seconds": 30
+        },
+        "observations": [
+          "checkout_http_status",
+          "currency_convert_error",
+          "payment_not_called",
+          "cart_retained"
+        ],
+        "affected_probes": [
+          "POST /api/checkout"
+        ],
+        "protected_probes": [
+          "GET /",
+          "GET /api/products",
+          "GET /api/cart",
+          "POST /api/cart"
+        ],
+        "expected_evidence": [
+          "currency_convert_error",
+          "checkout_internal_error",
+          "no_charge_span",
+          "cart_retained"
+        ],
+        "restoration": "none required (request fixture); verify a valid USD checkout succeeds",
+        "success_criteria": [
+          "checkout_rejected_before_charge",
+          "recovery_checkout_succeeds"
+        ]
+      },
+      {
+        "schema_version": "1.0.0",
+        "id": "payment-amount-mismatch",
+        "title": "Send an inconsistent Money amount directly to payment Charge",
+        "family": "currency_amount_mismatch",
+        "adapter": "payment_grpc_fixture",
+        "adapter_version": "1",
+        "execution": "preview",
+        "disabled_reason": null,
+        "target_service": "payment",
+        "affected_dependency": null,
+        "parameters": [
+          {
+            "name": "mode",
+            "type": "enum",
+            "description": "which Money invariant from demo.proto to violate",
+            "default": "negative_amount",
+            "minimum": null,
+            "maximum": null,
+            "choices": [
+              "negative_amount",
+              "nanos_out_of_range",
+              "sign_mismatch",
+              "unknown_currency",
+              "zero_amount"
+            ]
+          }
+        ],
+        "prerequisites": [
+          "dedicated_verified_sandbox",
+          "stable_measured_baseline",
+          "fresh_correlated_observations"
+        ],
+        "duration": {
+          "default_seconds": 0,
+          "max_seconds": 30
+        },
+        "observations": [
+          "charge_rpc_status",
+          "transaction_id_returned",
+          "payment_log_amount"
+        ],
+        "affected_probes": [
+          "grpc payment Charge"
+        ],
+        "protected_probes": [
+          "GET /",
+          "GET /api/products",
+          "GET /api/cart",
+          "POST /api/cart"
+        ],
+        "expected_evidence": [
+          "charge_accepted_or_rejected",
+          "payment_span_amount_attributes"
+        ],
+        "restoration": "none required (synthetic_request baggage set; no state mutated)",
+        "success_criteria": [
+          "charge_outcome_recorded",
+          "recovery_checkout_succeeds"
+        ]
+      },
+      {
+        "schema_version": "1.0.0",
+        "id": "checkout-duplicate-submit",
+        "title": "Submit the same checkout concurrently for one cart",
+        "family": "duplicate_payment",
+        "adapter": "checkout_request_fixture",
+        "adapter_version": "1",
+        "execution": "preview",
+        "disabled_reason": null,
+        "target_service": "checkout",
+        "affected_dependency": "payment",
+        "parameters": [
+          {
+            "name": "concurrency",
+            "type": "int",
+            "description": "identical PlaceOrder requests fired at once for one user/cart",
+            "default": 2,
+            "minimum": 2,
+            "maximum": 5,
+            "choices": null
+          }
+        ],
+        "prerequisites": [
+          "dedicated_verified_sandbox",
+          "stable_measured_baseline",
+          "fresh_correlated_observations"
+        ],
+        "duration": {
+          "default_seconds": 0,
+          "max_seconds": 30
+        },
+        "observations": [
+          "order_ids",
+          "transaction_ids",
+          "payment_went_through_logs",
+          "cart_state"
+        ],
+        "affected_probes": [
+          "POST /api/checkout"
+        ],
+        "protected_probes": [
+          "GET /",
+          "GET /api/products",
+          "GET /api/cart",
+          "POST /api/cart"
+        ],
+        "expected_evidence": [
+          "orders_accepted_per_logical_cart",
+          "charge_spans_per_logical_cart"
+        ],
+        "restoration": "none required; carts are synthetic and emptied by checkout",
+        "success_criteria": [
+          "accepted_order_count_recorded",
+          "recovery_checkout_succeeds"
+        ]
+      },
+      {
+        "schema_version": "1.0.0",
+        "id": "payment-charge-replay",
+        "title": "Replay one identical Charge request directly to payment",
+        "family": "duplicate_payment",
+        "adapter": "payment_grpc_fixture",
+        "adapter_version": "1",
+        "execution": "preview",
+        "disabled_reason": null,
+        "target_service": "payment",
+        "affected_dependency": null,
+        "parameters": [
+          {
+            "name": "mode",
+            "type": "enum",
+            "description": "payload shape",
+            "default": "valid_usd",
+            "minimum": null,
+            "maximum": null,
+            "choices": [
+              "valid_usd"
+            ]
+          },
+          {
+            "name": "repeat",
+            "type": "int",
+            "description": "identical calls",
+            "default": 2,
+            "minimum": 2,
+            "maximum": 5,
+            "choices": null
+          }
+        ],
+        "prerequisites": [
+          "dedicated_verified_sandbox",
+          "stable_measured_baseline",
+          "fresh_correlated_observations"
+        ],
+        "duration": {
+          "default_seconds": 0,
+          "max_seconds": 30
+        },
+        "observations": [
+          "charge_rpc_status",
+          "transaction_ids"
+        ],
+        "affected_probes": [
+          "grpc payment Charge"
+        ],
+        "protected_probes": [
+          "GET /",
+          "GET /api/products",
+          "GET /api/cart",
+          "POST /api/cart"
+        ],
+        "expected_evidence": [
+          "distinct_transaction_ids_for_identical_requests"
+        ],
+        "restoration": "none required (synthetic_request baggage set)",
+        "success_criteria": [
+          "all_transaction_ids_recorded"
+        ]
+      },
+      {
+        "schema_version": "1.0.0",
+        "id": "payment-delay-or-response-loss",
+        "title": "Delay or drop the Charge response",
+        "family": "payment_unavailable",
+        "adapter": "payment_grpc_fixture",
+        "adapter_version": "0",
+        "execution": "disabled",
+        "disabled_reason": "X-02 needs a scoped proxy/test hook; no adapter exists",
+        "target_service": "payment",
+        "affected_dependency": null,
+        "parameters": [],
+        "prerequisites": [
+          "dedicated_verified_sandbox",
+          "stable_measured_baseline",
+          "fresh_correlated_observations",
+          "scoped_proxy"
+        ],
+        "duration": {
+          "default_seconds": 15,
+          "max_seconds": 30
+        },
+        "observations": [
+          "checkout_latency",
+          "deadline_exceeded"
+        ],
+        "affected_probes": [
+          "POST /api/checkout"
+        ],
+        "protected_probes": [
+          "GET /",
+          "GET /api/products",
+          "GET /api/cart",
+          "POST /api/cart"
+        ],
+        "expected_evidence": [
+          "deadline_exceeded"
+        ],
+        "restoration": "remove proxy",
+        "success_criteria": [
+          "not_defined"
+        ]
+      }
+    ],
+    "history": [
+      {
+        "schema_version": "1.0.0",
+        "run_id": "run-0001",
+        "plan_id": "plan-0001",
+        "state": "RECOVERED",
+        "stop_reason": "completed",
+        "revisions": {
+          "source": "dedc0178918e260823323b8d95005a8cb924b007",
+          "images": {},
+          "config_sha256": null,
+          "workload_version": "contract-fixture-only"
+        },
+        "prior_state": {},
+        "applied_state": {},
+        "restored_state": {},
+        "started_at": null,
+        "ended_at": null,
+        "last_event_seq": 7,
+        "evidence_refs": [
+          "fixture-only/obs-baseline",
+          "fixture-only/obs-fault",
+          "fixture-only/obs-recovery"
+        ],
+        "cleanup_verified": true,
+        "recovery_outcome": "verified"
+      }
+    ]
+  },
+  "events": [
+    {
+      "schema_version": "1.0.0",
+      "run_id": "run-0001",
+      "seq": 1,
+      "at": "2026-10-10T10:00:01Z",
+      "type": "state_changed",
+      "state": "BASELINING",
+      "stop_reason": null,
+      "data": {
+        "message": "Illustrative lifecycle event; no action executed."
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "run_id": "run-0001",
+      "seq": 2,
+      "at": "2026-10-10T10:00:02Z",
+      "type": "state_changed",
+      "state": "READY",
+      "stop_reason": null,
+      "data": {
+        "message": "Illustrative lifecycle event; no action executed."
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "run_id": "run-0001",
+      "seq": 3,
+      "at": "2026-10-10T10:00:03Z",
+      "type": "state_changed",
+      "state": "ARMED",
+      "stop_reason": null,
+      "data": {
+        "message": "Illustrative lifecycle event; no action executed."
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "run_id": "run-0001",
+      "seq": 4,
+      "at": "2026-10-10T10:00:04Z",
+      "type": "state_changed",
+      "state": "RUNNING",
+      "stop_reason": null,
+      "data": {
+        "message": "Illustrative lifecycle event; no action executed."
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "run_id": "run-0001",
+      "seq": 5,
+      "at": "2026-10-10T10:00:05Z",
+      "type": "state_changed",
+      "state": "RESTORING",
+      "stop_reason": null,
+      "data": {
+        "message": "Illustrative lifecycle event; no action executed."
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "run_id": "run-0001",
+      "seq": 6,
+      "at": "2026-10-10T10:00:06Z",
+      "type": "state_changed",
+      "state": "VERIFYING_RECOVERY",
+      "stop_reason": null,
+      "data": {
+        "message": "Illustrative lifecycle event; no action executed."
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "run_id": "run-0001",
+      "seq": 7,
+      "at": "2026-10-10T10:00:07Z",
+      "type": "state_changed",
+      "state": "RECOVERED",
+      "stop_reason": null,
+      "data": {
+        "message": "Illustrative lifecycle event; no action executed."
+      }
+    }
+  ],
+  "detail": {
+    "run": {
+      "schema_version": "1.0.0",
+      "run_id": "run-0001",
+      "plan_id": "plan-0001",
+      "state": "RECOVERED",
+      "stop_reason": "completed",
+      "revisions": {
+        "source": "dedc0178918e260823323b8d95005a8cb924b007",
+        "images": {},
+        "config_sha256": null,
+        "workload_version": "contract-fixture-only"
+      },
+      "prior_state": {},
+      "applied_state": {},
+      "restored_state": {},
+      "started_at": null,
+      "ended_at": null,
+      "last_event_seq": 7,
+      "evidence_refs": [
+        "fixture-only/obs-baseline",
+        "fixture-only/obs-fault",
+        "fixture-only/obs-recovery"
+      ],
+      "cleanup_verified": true,
+      "recovery_outcome": "verified"
+    },
+    "observations": [
+      {
+        "schema_version": "1.0.0",
+        "observation_id": "obs-fixture-1",
+        "run_id": "run-0001",
+        "at": "2026-10-10T10:00:00Z",
+        "probe": "POST /api/checkout",
+        "phase": "baseline",
+        "request_id": null,
+        "trace_id": null,
+        "span_ids": [],
+        "outcome": "success",
+        "http_status": 200,
+        "rpc_code": null,
+        "latency_ms": 600.0,
+        "cart_retained": true,
+        "transaction_ids": [],
+        "metric_refs": [],
+        "log_refs": [],
+        "fresh": true,
+        "complete": true
+      },
+      {
+        "schema_version": "1.0.0",
+        "observation_id": "obs-fixture-2",
+        "run_id": "run-0001",
+        "at": "2026-10-10T10:00:00Z",
+        "probe": "POST /api/checkout",
+        "phase": "fault",
+        "request_id": null,
+        "trace_id": null,
+        "span_ids": [],
+        "outcome": "rpc_error",
+        "http_status": 500,
+        "rpc_code": null,
+        "latency_ms": 1500.0,
+        "cart_retained": true,
+        "transaction_ids": [],
+        "metric_refs": [],
+        "log_refs": [],
+        "fresh": true,
+        "complete": true
+      },
+      {
+        "schema_version": "1.0.0",
+        "observation_id": "obs-fixture-3",
+        "run_id": "run-0001",
+        "at": "2026-10-10T10:00:00Z",
+        "probe": "POST /api/checkout",
+        "phase": "recovery",
+        "request_id": null,
+        "trace_id": null,
+        "span_ids": [],
+        "outcome": "success",
+        "http_status": 200,
+        "rpc_code": null,
+        "latency_ms": 600.0,
+        "cart_retained": true,
+        "transaction_ids": [],
+        "metric_refs": [],
+        "log_refs": [],
+        "fresh": true,
+        "complete": true
+      }
+    ],
+    "diagnosis": {
+      "schema_version": "1.0.0",
+      "run_id": "run-0001",
+      "service": "checkout",
+      "edge": "checkout->payment",
+      "category": "connectivity",
+      "affected_paths": [],
+      "cited_observations": [
+        "obs-fixture-2"
+      ],
+      "alternatives": [],
+      "uncertainty": "high",
+      "next_action": "Illustrative diagnosis; real correlated evidence is required."
+    },
+    "patch_review": {
+      "patch": {
+        "schema_version": "1.0.0",
+        "patch_id": "patch-candidate-01",
+        "base_revision": "dedc0178918e260823323b8d95005a8cb924b007",
+        "diff_sha256": "fd754fb864479a5540821ace32a484529fd21fc99189e7ce447913a71db9a412",
+        "affected_files": [
+          "src/checkout/main.go"
+        ],
+        "rationale": "Provisional source-based candidate: preserve RPC codes through checkout; runtime reproduction and category mapping tests pending.",
+        "approved_diff_sha256": null,
+        "tests": [],
+        "image_digests": {},
+        "rollback_images": {}
+      },
+      "diff": "diff --git a/src/checkout/main.go b/src/checkout/main.go\n--- a/src/checkout/main.go\n+++ b/src/checkout/main.go\n@@ -360,7 +360,7 @@\n \n \ttxID, err := cs.chargeCard(ctx, total, req.CreditCard)\n \tif err != nil {\n-\t\treturn nil, status.Errorf(codes.Internal, \"failed to charge card: %+v\", err)\n+\t\treturn nil, status.Errorf(status.Code(err), \"failed to charge card: %+v\", err)\n \t}\n \n \tspan.AddEvent(\"charged\",\n@@ -583,7 +583,7 @@\n \t\tCreditCard: paymentInfo,\n \t})\n \tif err != nil {\n-\t\treturn \"\", fmt.Errorf(\"could not charge the card: %+v\", err)\n+\t\treturn \"\", fmt.Errorf(\"could not charge the card: %w\", err)\n \t}\n \treturn paymentResp.GetTransactionId(), nil\n }\n",
+      "tests": {
+        "passed": false,
+        "checks": [],
+        "message": "Application tests and source build not run."
+      },
+      "approval": null,
+      "deployment_ready": false,
+      "deployment": null
+    },
+    "comparison": {
+      "original_run_id": "run-0001",
+      "replay_run_id": null,
+      "conclusive": false,
+      "outcome": "unverified",
+      "differences": {
+        "error_category": {
+          "before": "Generic checkout failure",
+          "after": "Not observed"
+        },
+        "cart_retained": {
+          "before": "Illustrative true",
+          "after": "Not observed"
+        }
+      },
+      "limitations": [
+        "Fixture data only. No patch deployed and no replay measured."
+      ]
+    }
+  }
+}
