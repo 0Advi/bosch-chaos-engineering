@@ -222,7 +222,7 @@ class Observation(Contract):
     run_id: Identifier
     at: datetime
     probe: str
-    phase: Literal["baseline", "fault", "recovery"]
+    phase: Literal["warmup", "baseline", "fault", "recovery", "control"]
     request_id: Optional[str] = None
     trace_id: Optional[Annotated[str, Field(pattern=r"^[0-9a-f]{32}$")]] = None
     span_ids: list[str] = []
@@ -234,8 +234,80 @@ class Observation(Contract):
     transaction_ids: list[str] = []
     metric_refs: list[str] = []
     log_refs: list[str] = []
+    services: list[str] = []
+    expected_outcome_met: Optional[bool] = None
     fresh: bool
     complete: bool
+    missing: list[str] = Field(
+        default_factory=list,
+        description="Signals that were expected but not observed; never filled in by inference.")
+
+    @model_validator(mode="after")
+    def _honest_completeness(self):
+        if self.complete and self.missing:
+            raise ValueError("an observation with missing signals cannot be complete")
+        return self
+
+
+# ----------------------------------------------------------------- baseline
+class ProbeStats(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    probe: str
+    attempts: Annotated[int, Field(ge=0)]
+    failures: Annotated[int, Field(ge=0)]
+    failure_rate: Annotated[float, Field(ge=0, le=1)]
+    p50_ms: Optional[float] = None
+    p90_ms: Optional[float] = None
+    p95_ms: Optional[float] = None
+    p99_ms: Optional[float] = None
+    max_ms: Optional[float] = None
+
+
+class Baseline(Contract):
+    baseline_id: Identifier
+    started_at: datetime
+    finished_at: datetime
+    sandbox: SandboxRef
+    upstream_revision: str
+    flag_sha256: Sha256
+    workload: dict
+    probes: list[ProbeStats]
+    controls: list[dict]
+    telemetry: dict
+    resources: dict
+    health: dict
+    criteria: dict
+    healthy: bool
+    blocking: list[str]
+    observations_file: str
+    limitations: list[str]
+
+    @model_validator(mode="after")
+    def _verdict_matches_blockers(self):
+        if self.healthy == bool(self.blocking):
+            raise ValueError("healthy must be true exactly when there are no blocking findings")
+        return self
+
+    def probe(self, name: str) -> ProbeStats:
+        return next(p for p in self.probes if p.probe == name)
+
+
+class Gate(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    value: Union[int, float]
+    unit: str
+    rule: str
+    inputs: dict
+
+
+class PaymentPolicy(Contract):
+    policy_version: str
+    derived_at: datetime
+    derived_from: Annotated[list[dict], Field(min_length=2)]
+    affected_probes: list[str]
+    protected_probes: list[str]
+    gates: dict[str, Gate]
+    limitations: list[str]
 
 
 # ---------------------------------------------------------------- diagnosis

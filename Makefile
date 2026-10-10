@@ -1,6 +1,7 @@
 PYTHON ?= python3
 
-.PHONY: help bootstrap validate build start stop status smoke verify test schemas preflight flags capabilities
+.PHONY: help bootstrap validate build start stop status smoke verify test schemas preflight flags capabilities \
+	probe baseline derive-policy
 help:
 	@echo "bootstrap  Fetch pinned upstream source"
 	@echo "validate   Validate the selected deployment without starting containers"
@@ -15,6 +16,9 @@ help:
 	@echo "preflight  Check sandbox identity and isolation (read-only)"
 	@echo "flags      Verify the sandbox-owned flag file (and runtime if running)"
 	@echo "capabilities  List the typed fault capability catalog"
+	@echo "probe      One synthetic checkout correlated with traces/logs (read-only)"
+	@echo "baseline   Measure a healthy payment baseline (about 4 minutes)"
+	@echo "derive-policy BASELINES=\"a.json b.json\"  Write config/payment_policy.yaml"
 
 bootstrap:
 	git submodule update --init --recursive
@@ -42,3 +46,9 @@ flags:
 	$(PYTHON) scripts/verify_flags.py
 capabilities:
 	$(PYTHON) -m controller.cli capabilities
+probe:
+	$(PYTHON) -m controller.cli probe
+baseline:
+	$(PYTHON) -m controller.cli baseline
+derive-policy:
+	$(PYTHON) -m controller.cli derive-policy $(BASELINES) --write

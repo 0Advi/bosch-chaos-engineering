@@ -161,5 +161,71 @@
     "limitations": [
       "Contract fixture only; no measurements."
     ]
+  },
+  "Baseline": {
+    "baseline_id": "baseline-0001",
+    "started_at": "2026-10-10T09:50:00Z",
+    "finished_at": "2026-10-10T09:55:00Z",
+    "sandbox": {
+      "docker_context": "default",
+      "daemon_id": "unset",
+      "compose_project": "bosch-chaos-sandbox"
+    },
+    "upstream_revision": "unknown",
+    "flag_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "workload": {
+      "attempts": 2
+    },
+    "probes": [
+      {
+        "probe": "POST /api/checkout",
+        "attempts": 2,
+        "failures": 0,
+        "failure_rate": 0.0,
+        "p50_ms": 120.0,
+        "p90_ms": 150.0,
+        "p95_ms": 150.0,
+        "p99_ms": 150.0,
+        "max_ms": 150.0
+      }
+    ],
+    "controls": [],
+    "telemetry": {},
+    "resources": {},
+    "health": {},
+    "criteria": {},
+    "healthy": true,
+    "blocking": [],
+    "observations_file": "artifacts/baselines/baseline-0001.observations.jsonl",
+    "limitations": []
+  },
+  "PaymentPolicy": {
+    "policy_version": "1",
+    "derived_at": "2026-10-10T10:00:00Z",
+    "derived_from": [
+      {
+        "baseline_id": "baseline-0001"
+      },
+      {
+        "baseline_id": "baseline-0002"
+      }
+    ],
+    "affected_probes": [
+      "POST /api/checkout"
+    ],
+    "protected_probes": [
+      "GET /api/products"
+    ],
+    "gates": {
+      "checkout_p95_ms": {
+        "value": 300,
+        "unit": "ms",
+        "rule": "2x baseline p95",
+        "inputs": {
+          "baseline_p95_ms": 150
+        }
+      }
+    },
+    "limitations": []
   }
 }

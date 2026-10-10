@@ -6,7 +6,8 @@ import sys
 from . import contracts
 
 OUT = Path(__file__).resolve().parents[2] / "schemas"
-MODELS = ["Capability", "Plan", "Run", "Event", "Observation", "Diagnosis", "Patch", "Comparison"]
+MODELS = ["Capability", "Plan", "Run", "Event", "Observation", "Diagnosis", "Patch", "Comparison",
+          "Baseline", "PaymentPolicy"]
 
 
 def main(check: bool = False) -> int:

@@ -1,0 +1,23 @@
+schema_version: 1
+# Healthy-envelope criteria for the payment baseline (P1-03). Owner M2, reviewer M5.
+# A baseline that misses any criterion is still saved, with its blocking findings,
+# and execution stays disabled. Do not relax a criterion to make a run pass.
+criteria_version: "2026-10-10.1"
+workload:
+  attempts: 30              # measured valid checkouts
+  duration_seconds: 180     # spread evenly over this window
+  warmup_attempts: 5        # recorded separately, excluded from statistics
+  request_timeout_seconds: 15
+  trace_wait_seconds: 30    # max wait for a trace to appear in Jaeger
+valid_checkout_max_failure_rate: 0.0   # every measured valid checkout must match expectations
+protected_max_failure_rate: 0.0        # home, catalog and cart probes
+controls_must_match: true              # each invalid card: 422 PAYMENT_FAILED, cart retained
+min_trace_coverage: 0.9                # measured checkouts with frontend+checkout+payment spans
+max_metric_age_seconds: 180            # span metrics are pushed; Prometheus scrapes every 60 s
+min_log_coverage: 0.5                  # measured checkouts with indexed logs for their trace
+require_all_services_healthy: true
+max_restarts_during_measurement: 0
+baseline_max_age_hours: 24             # older baselines cannot gate a live run
+reproducibility:
+  max_checkout_p95_ratio: 1.5          # repeated baselines' checkout p95 within 1.5x
+  max_failure_rate_delta: 0.0

@@ -1,0 +1,238 @@
+{
+  "$defs": {
+    "ProbeStats": {
+      "additionalProperties": false,
+      "properties": {
+        "attempts": {
+          "minimum": 0,
+          "title": "Attempts",
+          "type": "integer"
+        },
+        "failure_rate": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Failure Rate",
+          "type": "number"
+        },
+        "failures": {
+          "minimum": 0,
+          "title": "Failures",
+          "type": "integer"
+        },
+        "max_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Ms"
+        },
+        "p50_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P50 Ms"
+        },
+        "p90_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P90 Ms"
+        },
+        "p95_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P95 Ms"
+        },
+        "p99_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P99 Ms"
+        },
+        "probe": {
+          "title": "Probe",
+          "type": "string"
+        }
+      },
+      "required": [
+        "probe",
+        "attempts",
+        "failures",
+        "failure_rate"
+      ],
+      "title": "ProbeStats",
+      "type": "object"
+    },
+    "SandboxRef": {
+      "additionalProperties": false,
+      "properties": {
+        "compose_project": {
+          "title": "Compose Project",
+          "type": "string"
+        },
+        "daemon_id": {
+          "title": "Daemon Id",
+          "type": "string"
+        },
+        "docker_context": {
+          "title": "Docker Context",
+          "type": "string"
+        }
+      },
+      "required": [
+        "docker_context",
+        "daemon_id",
+        "compose_project"
+      ],
+      "title": "SandboxRef",
+      "type": "object"
+    }
+  },
+  "$id": "bosch-chaos/baseline/1.0.0",
+  "additionalProperties": false,
+  "properties": {
+    "baseline_id": {
+      "pattern": "^[a-z0-9][a-z0-9-]{1,63}$",
+      "title": "Baseline Id",
+      "type": "string"
+    },
+    "blocking": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Blocking",
+      "type": "array"
+    },
+    "controls": {
+      "items": {
+        "type": "object"
+      },
+      "title": "Controls",
+      "type": "array"
+    },
+    "criteria": {
+      "title": "Criteria",
+      "type": "object"
+    },
+    "finished_at": {
+      "format": "date-time",
+      "title": "Finished At",
+      "type": "string"
+    },
+    "flag_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Flag Sha256",
+      "type": "string"
+    },
+    "health": {
+      "title": "Health",
+      "type": "object"
+    },
+    "healthy": {
+      "title": "Healthy",
+      "type": "boolean"
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Limitations",
+      "type": "array"
+    },
+    "observations_file": {
+      "title": "Observations File",
+      "type": "string"
+    },
+    "probes": {
+      "items": {
+        "$ref": "#/$defs/ProbeStats"
+      },
+      "title": "Probes",
+      "type": "array"
+    },
+    "resources": {
+      "title": "Resources",
+      "type": "object"
+    },
+    "sandbox": {
+      "$ref": "#/$defs/SandboxRef"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "enum": [
+        "1.0.0"
+      ],
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "telemetry": {
+      "title": "Telemetry",
+      "type": "object"
+    },
+    "upstream_revision": {
+      "title": "Upstream Revision",
+      "type": "string"
+    },
+    "workload": {
+      "title": "Workload",
+      "type": "object"
+    }
+  },
+  "required": [
+    "baseline_id",
+    "started_at",
+    "finished_at",
+    "sandbox",
+    "upstream_revision",
+    "flag_sha256",
+    "workload",
+    "probes",
+    "controls",
+    "telemetry",
+    "resources",
+    "health",
+    "criteria",
+    "healthy",
+    "blocking",
+    "observations_file",
+    "limitations"
+  ],
+  "title": "Baseline",
+  "type": "object"
+}
