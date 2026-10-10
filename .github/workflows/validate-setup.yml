@@ -14,13 +14,38 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate workbench state and transport boundaries
+        run: make test-workbench
       - name: Install pinned controller test dependencies
         run: python -m pip install -r requirements-dev.txt
-      - name: Validate controller contracts and scope without live execution
-        run: make test
+      - name: Controller, API, report and recovery tests (no Docker, live faults or model credentials)
+        run: python -m pytest -q tests --junitxml=test-results/junit.xml
+      - name: Publish test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: controller-test-results
+          path: test-results/junit.xml
       - name: Check generated schemas and healthy flag definitions
         run: |
           python -m controller.schemas.export --check
           make flags
       - name: Validate selected deployment and isolation configuration
         run: make validate
+      - name: Offline release inventory
+        run: make release-check
+      - name: Held-out free rule evaluation and simulated controller demo
+        run: |
+          make eval-baseline
+          python scripts/demo_controller.py
+      - name: Publish reproducible integration evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-evidence
+          path: |
+            artifacts/results/simulated-demo.json
+            artifacts/results/evaluations/*.json
+            artifacts/results/evaluations/*.md

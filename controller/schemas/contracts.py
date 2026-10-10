@@ -178,6 +178,8 @@ class StopReason(str, Enum):
     OBSERVATION_LOSS = "observation_loss"
     CONFIG_CONFLICT = "config_conflict"
     ADAPTER_ERROR = "adapter_error"
+    CONTROLLER_LOST = "controller_lost"
+    PRECONDITION_FAILED = "precondition_failed"
 
 
 class Revisions(BaseModel):
@@ -222,7 +224,7 @@ class Observation(Contract):
     run_id: Identifier
     at: datetime
     probe: str
-    phase: Literal["baseline", "fault", "recovery"]
+    phase: Literal["warmup", "baseline", "fault", "recovery", "control"]
     request_id: Optional[str] = None
     trace_id: Optional[Annotated[str, Field(pattern=r"^[0-9a-f]{32}$")]] = None
     span_ids: list[str] = []
@@ -234,8 +236,80 @@ class Observation(Contract):
     transaction_ids: list[str] = []
     metric_refs: list[str] = []
     log_refs: list[str] = []
+    services: list[str] = []
+    expected_outcome_met: Optional[bool] = None
     fresh: bool
     complete: bool
+    missing: list[str] = Field(
+        default_factory=list,
+        description="Signals that were expected but not observed; never filled in by inference.")
+
+    @model_validator(mode="after")
+    def _honest_completeness(self):
+        if self.complete and self.missing:
+            raise ValueError("an observation with missing signals cannot be complete")
+        return self
+
+
+# ----------------------------------------------------------------- baseline
+class ProbeStats(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    probe: str
+    attempts: Annotated[int, Field(ge=0)]
+    failures: Annotated[int, Field(ge=0)]
+    failure_rate: Annotated[float, Field(ge=0, le=1)]
+    p50_ms: Optional[float] = None
+    p90_ms: Optional[float] = None
+    p95_ms: Optional[float] = None
+    p99_ms: Optional[float] = None
+    max_ms: Optional[float] = None
+
+
+class Baseline(Contract):
+    baseline_id: Identifier
+    started_at: datetime
+    finished_at: datetime
+    sandbox: SandboxRef
+    upstream_revision: str
+    flag_sha256: Sha256
+    workload: dict
+    probes: list[ProbeStats]
+    controls: list[dict]
+    telemetry: dict
+    resources: dict
+    health: dict
+    criteria: dict
+    healthy: bool
+    blocking: list[str]
+    observations_file: str
+    limitations: list[str]
+
+    @model_validator(mode="after")
+    def _verdict_matches_blockers(self):
+        if self.healthy == bool(self.blocking):
+            raise ValueError("healthy must be true exactly when there are no blocking findings")
+        return self
+
+    def probe(self, name: str) -> ProbeStats:
+        return next(p for p in self.probes if p.probe == name)
+
+
+class Gate(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    value: Union[int, float]
+    unit: str
+    rule: str
+    inputs: dict
+
+
+class PaymentPolicy(Contract):
+    policy_version: str
+    derived_at: datetime
+    derived_from: Annotated[list[dict], Field(min_length=2)]
+    affected_probes: list[str]
+    protected_probes: list[str]
+    gates: dict[str, Gate]
+    limitations: list[str]
 
 
 # ---------------------------------------------------------------- diagnosis
@@ -248,6 +322,7 @@ class DiagnosisCategory(str, Enum):
     AMOUNT_VALIDATION = "amount_validation"
     DUPLICATE_PAYMENT_RISK = "duplicate_payment_risk"
     UNKNOWN_OUTCOME = "unknown_outcome"
+    POST_PAYMENT_FAILURE = "post_payment_failure"   # charged, then a later checkout step failed
     INSUFFICIENT_EVIDENCE = "insufficient_evidence"
 
 
@@ -268,6 +343,42 @@ class Diagnosis(Contract):
             raise ValueError("a diagnosis other than insufficient_evidence must cite observations")
         if self.category == DiagnosisCategory.INSUFFICIENT_EVIDENCE and self.uncertainty != "high":
             raise ValueError("insufficient_evidence must carry high uncertainty")
+        return self
+
+
+class Suggestion(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    kind: Literal["observe", "configuration", "code_fix", "retry_policy", "none"]
+    action: Annotated[str, Field(max_length=500)]
+    rationale: Annotated[str, Field(max_length=1000)]
+
+
+class DiagnosisResult(Contract):
+    """One diagnosis attempt with its grounding verdict and provenance (P4-03)."""
+    model_config = ConfigDict(extra="forbid", frozen=True, protected_namespaces=())
+    result_id: Identifier
+    run_id: Identifier
+    diagnoser: Literal["model", "baseline"]
+    status: Literal["grounded", "unverified", "rejected", "failed"]
+    diagnosis: Optional[Diagnosis] = None
+    suggestions: list[Suggestion] = []
+    requested_observations: list[str] = []
+    problems: list[str] = []
+    evidence_sha256: Sha256
+    evidence_items: Annotated[int, Field(ge=0)]
+    model_requested: Optional[str] = None
+    model_served: Optional[str] = None
+    prompt_version: Optional[str] = None
+    usage: dict = {}
+    latency_s: Optional[float] = None
+    provider_error: Optional[dict] = None
+
+    @model_validator(mode="after")
+    def _status_consistent(self):
+        if self.status == "grounded" and (self.diagnosis is None or self.problems):
+            raise ValueError("a grounded result needs a diagnosis and no grounding problems")
+        if self.status == "failed" and self.diagnosis is not None:
+            raise ValueError("a failed result carries no diagnosis")
         return self
 
 
@@ -321,3 +432,35 @@ class Comparison(Contract):
     differences: list[str] = []
     limitations: list[str] = []
     conclusive: bool
+
+
+# ------------------------------------------------------------------- report
+class TimelineEntry(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    seq: Annotated[int, Field(ge=1)]
+    at: datetime
+    state: RunState
+    stop_reason: Optional[StopReason] = None
+    by: Optional[str] = None
+
+
+class RunReport(Contract):
+    """Deterministic report rebuilt from saved run evidence only (P3-01)."""
+    report_id: Identifier
+    run_id: Identifier
+    capability_id: Identifier
+    plan: dict
+    state: RunState
+    stop_reason: Optional[StopReason] = None
+    terminal: bool
+    cleanup_status: Literal["not_started", "pending", "not_required", "verified", "needs_attention"]
+    timeline: list[TimelineEntry]
+    injection: Optional[dict] = None
+    comparison: Comparison
+    protected: dict
+    baseline_reference: Optional[dict] = None
+    conclusive: bool
+    impact_observed: Optional[bool] = None
+    missing_data: list[str]
+    limitations: list[str]
+    evidence: dict

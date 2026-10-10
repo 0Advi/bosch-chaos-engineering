@@ -9,25 +9,16 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
-import secrets
 import subprocess
 import threading
 import time
-from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
-from uuid import uuid4
 
+from ..observer.http import FAKE_CARD, Shop
 from ..schemas import AdapterKind, Capability
 from .flag_store import FlagSnapshot, FlagStore
 
 ROOT = Path(__file__).resolve().parents[2]
 PROTO_DIR = ROOT / "vendor" / "opentelemetry-demo" / "pb"
-# Upstream demo test-only card (same as scripts/verify_startup.py); not a real card.
-FAKE_CARD = {"creditCardNumber": "4432-8015-6152-0454", "creditCardCvv": 672,
-             "creditCardExpirationYear": 2039, "creditCardExpirationMonth": 1}
-ADDRESS = {"streetAddress": "1600 Amphitheatre Parkway", "zipCode": "94043",
-           "city": "Mountain View", "state": "CA", "country": "United States"}
 MONEY_MODES = {
     "valid_usd": {"currencyCode": "USD", "units": "10", "nanos": 0},
     "negative_amount": {"currencyCode": "USD", "units": "-100", "nanos": 0},
@@ -52,59 +43,6 @@ def flag_apply(store: FlagStore, cap: Capability, params: dict) -> tuple[FlagSna
 
 
 # -------------------------------------------------------- checkout fixture
-class Shop:
-    """Synthetic HTTP client for the loopback frontend-proxy only."""
-
-    def __init__(self, app_url: str, timeout: float):
-        if not app_url.startswith(("http://127.0.0.1:", "http://localhost:")):
-            raise PermissionError("checkout fixtures only target the loopback sandbox proxy")
-        self.app_url, self.timeout = app_url.rstrip("/"), timeout
-
-    def call(self, path: str, body: dict | None = None) -> dict:
-        trace_id = secrets.token_hex(16)
-        headers = {"Content-Type": "application/json", "baggage": "synthetic_request=true",
-                   "traceparent": f"00-{trace_id}-{secrets.token_hex(8)}-01"}
-        data = json.dumps(body).encode() if body is not None else None
-        started = time.monotonic()
-        result = {"path": path.split("?")[0], "trace_id": trace_id}
-        try:
-            with urlopen(Request(self.app_url + path, data=data, headers=headers),
-                         timeout=self.timeout) as resp:
-                raw, result["http_status"] = resp.read(), resp.status
-        except HTTPError as error:
-            raw, result["http_status"] = error.read(), error.code
-        except (URLError, TimeoutError) as error:
-            raw, result["http_status"], result["transport_error"] = b"", None, type(error).__name__
-        result["latency_ms"] = round((time.monotonic() - started) * 1000, 1)
-        try:
-            result["body"] = json.loads(raw) if raw else None
-        except ValueError:
-            result["body"] = None
-        return result
-
-    def new_cart(self, product_id: str, quantity: int) -> str:
-        user = "chaos-" + str(uuid4())
-        added = self.call("/api/cart", {"userId": user, "item": {"productId": product_id, "quantity": quantity}})
-        if added["http_status"] != 200:
-            raise RuntimeError(f"could not prepare synthetic cart: {added['http_status']}")
-        return user
-
-    def cart_items(self, user: str) -> int | None:
-        cart = self.call("/api/cart?" + urlencode({"sessionId": user, "currencyCode": "USD"}))
-        return len(cart["body"].get("items", [])) if cart["http_status"] == 200 and cart["body"] else None
-
-    def checkout(self, user: str, currency: str) -> dict:
-        order = {"userId": user, "email": "chaos-synthetic@example.com", "userCurrency": currency,
-                 "address": ADDRESS, "creditCard": FAKE_CARD}
-        result = self.call("/api/checkout?currencyCode=USD", order)
-        body = result.pop("body") or {}
-        # Keep only non-sensitive fields from the response.
-        result["order_id"] = body.get("orderId")
-        result["error"] = body.get("error")
-        result["error_code"] = body.get("code")
-        return result
-
-
 def currency_mismatch(shop: Shop, cap: Capability, params: dict) -> list[dict]:
     cfg, results = cap.adapter_config, []
     for _ in range(params["attempts"]):
@@ -144,6 +82,7 @@ def grpc_argv(cap: Capability, params: dict, network: str, run_id: str, timeout:
     cfg = cap.adapter_config
     payload = json.dumps({"amount": MONEY_MODES[params["mode"]], "creditCard": FAKE_CARD})
     return ["docker", "run", "--rm", "--network", network, "--label", f"bosch.chaos.run={run_id}",
+            "--label", "bosch.chaos.tool=grpcurl",
             "-v", f"{PROTO_DIR}:/protos:ro", cfg["grpcurl_image"],
             "-plaintext", "-max-time", str(int(timeout)), "-format-error",
             "-import-path", "/protos", "-proto", "demo.proto",

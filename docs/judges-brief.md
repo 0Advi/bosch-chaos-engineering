@@ -1,3 +1,11 @@
+> Current delivery (10 October 2026): P0–P4 teammate work and P5/P6 preparation
+> are integrated. The workbench connects to the controller; automated tests,
+> free rule evaluation and an explicitly simulated lifecycle demo are available.
+> Full live fault → verified repair → replay acceptance is still pending.
+> See [verified status](../IMPLEMENTATION_STATUS.md) and
+> [release/demo instructions](release-and-demo.md). The intended behavior described
+> below must not be presented as entirely demonstrated.
+
 # Bosch Chaos Engineering: project brief for judges
 
 Repository: https://github.com/0Advi/bosch-chaos-engineering

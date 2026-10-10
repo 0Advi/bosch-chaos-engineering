@@ -1,102 +1,54 @@
 # Implementation status
 
-Updated 10 October 2026. Local startup verification passed at **11:21 IST**.
+Updated 10 October 2026 following review and integration of all teammate P0–P4
+branches with P5/P6. See [release and demo instructions](docs/release-and-demo.md).
 
-## Phase 0 integration review
+| Phase | Implemented and checked | Acceptance remaining |
+|---|---|---|
+| P0 | Typed contracts, capability registry, pinned source and sandbox boundary | Dedicated daemon identity/approval |
+| P1 | Workload, observer, baseline measurement and derived policy | Two fresh reproducible healthy runtime baselines |
+| P2 | Durable guarded executor, bounded stop paths, restore and independent watchdog | Live normal/abort/controller-kill recovery |
+| P3 | Loopback API, resumable event stream, sanitized reports and evidence | Dedicated-sandbox integration acceptance |
+| P4 | Blind evidence, rule/model adapters, grounding and held-out fixtures | Live quality evaluation; optional model evaluation is outside current scope |
+| P5 | Connected planning/readiness, real history/events, abort, free diagnosis, baseline capture, evidence and candidate review | Complete live user flow and measured comparison |
+| P6 | Isolated candidate, source integrity, approval/test/image gates, backend-neutral rollback/replay | Full typed payment fix, real image operator/shared lock/crash supervisor, approved deployment and matched replay |
+| P7 | Reproducible setup, CI, offline readiness inventory, simulated demo/evaluation evidence and branch integration | Full live demonstration acceptance depends on remaining P1/P2/P6 work |
 
-The teammate’s Phase 0 foundation has been reviewed and hardened. Eight shared
-record schemas, lifecycle/event contracts, sandbox scope checks, a typed payment
-capability catalog, bounded proposal tools and sandbox-owned flags are implemented.
-All 93 controller tests pass with pinned dependencies; eight schema exports match.
-Configuration validation and read-only flag mount/runtime checks passed. Both
-payment flags evaluated to their healthy values after an identical-content atomic
-file replacement; flagd logged the file change. No fault was injected.
+## Verification
 
-Live execution is blocked in code, including the flag verification roundtrip. The
-current Docker Desktop preview fails dedicated sandbox approval checks. Baseline
-measurements and independent watchdog/abort/recovery verification remain pending.
-See [the review](docs/phase0-review.md). These checks do not refresh the startup
-workflow evidence below.
+- Combined Python/controller/UI bridge suite: 294 passed; 6 opt-in live sandbox
+  tests deselected. They have not passed against a real dedicated sandbox.
+- Six browser-independent workbench state/transport tests pass; 12 generated
+  contract schemas match the committed files.
+- Held-out free rule diagnosis: all 13 curated cases match their expected category;
+  reported applicable criteria pass. Action/model/cost criteria are not measured.
+- Current local home, catalog, recommendations and Prometheus smoke probes pass.
+- Connected browser shows the real readiness blockers and disables injection.
+- Isolated checkout candidate's existing Go application tests pass. These do not
+  prove the full payment fix, deployment or replay outcome.
 
-## Completed
+## Review fixes made during integration
 
-- Public repository and licensed, pinned OpenTelemetry Astronomy Shop source.
-- Core shop and existing observability stack: exactly 25 services.
-- Official release 3.1.0 source at `dedc0178918e260823323b8d95005a8cb924b007`;
-  matching versioned application images, with image IDs/digests captured.
-- Separate Compose project/network and loopback-only published shop/metrics ports.
-- Existing Collector, Prometheus, Jaeger, OpenSearch, Grafana, and Locust deployed.
-- Static architecture seed and proposed experiment/safety contract; faults disabled.
-- Repeatable configuration, workflow, and telemetry startup checks.
+The runner waits for independent watchdog acknowledgement before any fault is
+armed. Watchdog startup failure aborts without applying a fault. Baseline capture
+and run creation are mutually excluded in the API. Execution flags require actual
+booleans. Invalid/unsupported HTTP requests receive structured errors. Future,
+undersampled, wrong-revision and wrong-sandbox baselines cannot gate a live run.
+Untrusted log mentions of idempotency/ledger cannot authorize payment retries.
+Baseline report reads are confined to the artifact directory. Workbench actions
+use the existing controller and cannot assert passing application tests or bypass
+unimplemented deployment prerequisites.
 
-## Verified runtime evidence
+## Runtime state and remaining work
 
-See [artifacts/startup_verification.json](artifacts/startup_verification.json).
-This is a single timestamped startup verification, not a measured baseline.
+This machine is a shared preview: `approved: false`, daemon identity unset,
+execution disabled and no derived healthy-baseline policy. Current Docker context
+and Docker Desktop collector mount aliases fail the reviewed scope check. No live
+fault or code-image deployment was attempted during integration. The pinned
+upstream source and healthy flags remain unchanged.
 
-- All 25 containers running; defined health checks passed. No OOM kills or
-  automatic restart counts were recorded in that snapshot.
-- Browser visibly rendered the catalog; the API returned all 10 products.
-- Home, catalog, recommendations, currencies, cart add/read, demo checkout,
-  and empty-cart-after-checkout checks passed.
-- Synthetic checkout returned an order and items in approximately 2.81 seconds.
-- Grafana and Prometheus readiness endpoints passed.
-- Jaeger reported 16 trace services; Prometheus reported 18 named metric services.
-- OpenSearch contained 2,447 indexed log records at verification time.
-- Configuration validation, Python compilation, and whitespace checks passed.
-- Upstream working tree remains unchanged. No fault was executed.
-
-## Local preview
-
-Open http://localhost:8081/ for the shop, `/grafana/` for dashboards,
-`/jaeger/ui/` for traces, `/loadgen/` for generated traffic, and
-http://localhost:9090/ for Prometheus. See [docs/local-preview.md](docs/local-preview.md).
-
-Machine-specific settings use port 8081, the official Docker Hub release mirror,
-one simulated HTTP user, and no browser-driven load. A fresh clone defaults to
-port 8080, GHCR, and five HTTP users; sustainable load on another machine has
-not been established.
-
-Initial startup exposed a short OpenSearch health-check allowance, resource
-pressure, intermittent gateway timeouts, and generated requests to the excluded
-shopping-agent service. The overlay now provides a longer startup grace period,
-a shop-only workload adapter, one-second telemetry batching, and 30-second
-host/container polling. The latest full workflow passed after these adjustments;
-some generated requests still timed out. A small cumulative startup sample had
-2 failures in 10 requests (20%), while the full synthetic workflow passed. See
-[artifacts/startup_workload_snapshot.json](artifacts/startup_workload_snapshot.json).
-This sample includes warmup and does not establish steady-state performance.
-Stabilizing the runtime and measuring a healthy baseline remain the next priority.
-
-The preview runs in Docker Desktop on this machine. Its project/network separation
-is verified configuration, but this does not establish the dedicated runtime
-isolation required before a future fault. The Collector still mounts the Docker
-socket and host filesystem for observation.
-
-## Day 1 checklist
-
-| Requirement | Status |
-|---|---|
-| Public, licensed application selected | Verified |
-| Deployment and selected components | Started locally |
-| App works end to end in sandbox | Startup workflow passed |
-| Metrics, traces, logs | Presence verified; complete freshness checks pending |
-| Dependency map | Static seed; runtime edges pending |
-| Measured healthy baseline | Pending |
-| Controlled fault and visible impact | Pending |
-| Threshold abort, kill switch, invalid-target rejection | Pending controller |
-| Automatic restoration and recovery verification | Pending |
-| One active experiment | Proposed config; enforcement pending |
-| Evidence report and reproducible chaos demo | Startup evidence saved; experiment report pending |
-
-## Next action
-
-Phase 0 contracts are ready. Measure a repeatable healthy payment baseline and
-confirm trace dependencies.
-The payment evaluation design and disabled scenario catalog are documented in
-[docs/payment-failure-plan.md](docs/payment-failure-plan.md). Implement deterministic
-safety and a guarded flag executor before enabling a payment scenario in a
-dedicated sandbox. The existing disabled execution contract still describes the
-original recommendation outage. Evaluate payment-specific thresholds against
-actual measurements. Solution generation and before/after comparison remain
-future work; the running upstream dashboards do not implement those.
+Complete the ordered seven-step live demonstration in
+[docs/release-and-demo.md](docs/release-and-demo.md). Current status is **an integrated,
+tested development platform with guarded execution**, with live end-to-end payment
+repair and hackathon acceptance still pending. Do not present sample or simulated
+records as measured shop behavior.

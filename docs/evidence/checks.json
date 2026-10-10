@@ -1,0 +1,31 @@
+{
+  "kind": "integration_checks",
+  "live_acceptance": false,
+  "python_suite": {
+    "passed": 294,
+    "sandbox_tests_not_run": 6
+  },
+  "javascript_state_tests": {
+    "passed": 6
+  },
+  "schemas": {
+    "checked": 12
+  },
+  "isolated_checkout_application_tests": {
+    "command": "go test ./...",
+    "passed": true,
+    "diff_sha256": "fd754fb864479a5540821ace32a484529fd21fc99189e7ce447913a71db9a412",
+    "limitations": [
+      "Existing upstream tests; the complete typed payment fix is not implemented or measured."
+    ]
+  },
+  "smoke": {
+    "shop_home": 200,
+    "products": 200,
+    "recommendations": 200,
+    "prometheus_ready": 200
+  },
+  "limitations": [
+    "Synthetic test environments are not a dedicated live-sandbox acceptance run."
+  ]
+}

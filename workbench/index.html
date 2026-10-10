@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'"
+    />
+    <title>Bosch · Payment workbench</title>
+    <link rel="stylesheet" href="style.css" />
+    <script type="module" src="app.mjs"></script>
+  </head>
+  <body>
+    <a class="skip" href="#workspace">Skip to workspace</a>
+    <header>
+      <a class="brand" href="#plan">BOSCH <span>Resilience lab</span></a
+      ><span id="mode" class="tag">Connecting</span
+      ><button id="refresh">Refresh state</button>
+    </header>
+    <div class="shell">
+      <nav aria-label="Workbench">
+        <p class="nav-label">PAYMENT EXPERIMENTS</p>
+        <a href="#plan">01 &nbsp; Plan</a
+        ><a href="#run">02 &nbsp; Run & evidence</a
+        ><a href="#history">03 &nbsp; History</a
+        ><a href="#patch">04 &nbsp; Review a fix</a
+        ><a href="#compare">05 &nbsp; Compare</a>
+        <p class="nav-note">
+          Restore the application first. Review a code change afterwards.
+        </p>
+      </nav>
+      <main id="workspace" tabindex="-1">
+        <p id="notice" role="status" aria-live="polite"></p>
+        <div id="content"></div>
+      </main>
+    </div>
+    <footer>
+      Payment chaos engineering <span id="updated">State not loaded</span>
+    </footer>
+  </body>
+</html>

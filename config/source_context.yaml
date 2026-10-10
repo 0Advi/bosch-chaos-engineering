@@ -1,0 +1,32 @@
+schema_version: 1
+# Pinned upstream source excerpts given to the diagnostic model as evidence (P4-02).
+# Excerpts are located by text anchors in vendor/opentelemetry-demo at the pinned
+# revision and verified by sha256; a mismatch is reported, never silently used.
+# Upstream: OpenTelemetry Astronomy Shop, Apache-2.0 (see NOTICE).
+upstream_revision: dedc0178918e260823323b8d95005a8cb924b007
+root: vendor/opentelemetry-demo
+excerpts:
+  - id: payment-charge-handler
+    path: src/payment/charge.js
+    start: "module.exports.charge = async request => {"
+    end: null
+    sha256: fc373f9c944a7f534963007958b3164372aca868efc5c6cc9bca97622700a25a
+    why: payment Charge validation, paymentFailure flag, error messages, no amount/idempotency checks
+  - id: checkout-place-order
+    path: src/checkout/main.go
+    start: "func (cs *checkout) PlaceOrder("
+    end: "func (cs *checkout) prepareOrderItemsAndShippingQuoteFromCart("
+    sha256: 11ab6d19e2905944bfb31411e6915b75d3e0dbca10147f761d0bae6caa72ab1a
+    why: order of prepare/charge/ship/empty-cart; status codes returned to the frontend
+  - id: checkout-charge-card
+    path: src/checkout/main.go
+    start: "func (cs *checkout) chargeCard("
+    end: "func (cs *checkout) sendOrderConfirmation("
+    sha256: b2e5d75c4a9f9d58e7e7e61e7f6af5a4b5a16b78a9db2ae2205beeb51262251d
+    why: paymentUnreachable flag switches the payment client to badAddress:50051
+  - id: frontend-checkout-error-mapping
+    path: src/frontend/pages/api/checkout.ts
+    start: "const PAYMENT_FAILURE_PREFIX"
+    end: "      const { order: { items"
+    sha256: 66892346ce8586b1132711e69e81032dc86de946128198a51640962056ba667c
+    why: how checkout errors become 422 PAYMENT_FAILED or 500 for the browser

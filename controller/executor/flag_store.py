@@ -33,6 +33,32 @@ class FlagSnapshot:
     state: str = "ENABLED"
 
 
+@dataclass(frozen=True)
+class FlagChange:
+    """A prepared single-flag change with the exact bytes needed to undo it (P2-02).
+
+    It is persisted in the recovery journal before the file is written, so a
+    watchdog can restore the exact prior file even if the controller dies
+    between writing and recording the write.
+    """
+    flag: str
+    prior_variant: str
+    prior_value: object
+    variant: str
+    value: object
+    prior_sha256: str
+    applied_sha256: str
+    prior_text: str
+    applied_text: str
+
+    def as_journal(self) -> dict:
+        return {"kind": "flag", **self.__dict__}
+
+    @classmethod
+    def from_journal(cls, data: dict) -> "FlagChange":
+        return cls(**{k: v for k, v in data.items() if k != "kind"})
+
+
 def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -79,11 +105,57 @@ class FlagStore:
             raise RuntimeError(f"{prior.flag} restored to {restored.value!r}, expected {prior.value!r}")
         return restored
 
+    # ------------------------------------------------ journaled change API
+    def prepare(self, flag: str, variant: str) -> FlagChange:
+        """Compute the exact applied file without writing anything."""
+        if flag not in WRITABLE_FLAGS:
+            raise PermissionError(f"flag {flag} is not writable by the controller")
+        raw = self.path.read_bytes()
+        doc = json.loads(raw)
+        entry = doc["flags"][flag]
+        if variant not in entry["variants"]:
+            raise ValueError(f"{flag} has no variant {variant!r}")
+        if entry.get("targeting"):
+            raise ValueError(f"{flag} has targeting rules; defaultVariant would not decide evaluation")
+        prior_variant = entry["defaultVariant"]
+        if prior_variant == variant:
+            raise ValueError(f"{flag} is already {variant!r}; nothing to inject")
+        entry["defaultVariant"] = variant
+        entry["state"] = "ENABLED"
+        applied = json.dumps(doc, indent=2) + "\n"
+        return FlagChange(flag, prior_variant, entry["variants"][prior_variant], variant,
+                          entry["variants"][variant], _sha(raw), _sha(applied.encode()),
+                          raw.decode(), applied)
+
+    def state_of(self, change: FlagChange) -> str:
+        """'prior', 'applied' or 'conflict' for the file as it is now."""
+        digest = _sha(self.path.read_bytes())
+        return {change.prior_sha256: "prior", change.applied_sha256: "applied"}.get(digest, "conflict")
+
+    def apply(self, change: FlagChange) -> None:
+        if self.state_of(change) != "prior":
+            raise FlagConflict(f"{self.path.name} changed since the change was prepared")
+        self._atomic_write(change.applied_text)
+
+    def undo(self, change: FlagChange) -> str:
+        """Idempotent restore of the exact prior bytes; never overwrites external edits."""
+        state = self.state_of(change)
+        if state == "prior":
+            return "already_prior"
+        if state == "conflict":
+            raise FlagConflict(f"{self.path.name} was edited externally during the run; "
+                               "refusing to overwrite it")
+        self._atomic_write(change.prior_text)
+        if self.state_of(change) != "prior":
+            raise FlagConflict(f"{self.path.name} did not return to its prior bytes")
+        return "restored"
+
     def _atomic_write(self, text: str) -> None:
         # Same directory => rename is atomic and visible through the dir bind mount.
         fd, tmp = tempfile.mkstemp(dir=self.path.parent, prefix=".flagd-", suffix=".json")
         try:
-            with os.fdopen(fd, "w") as handle:
+            # utf-8 and no newline translation, so restored bytes equal the prior bytes.
+            with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
                 handle.write(text)
                 handle.flush()
                 os.fsync(handle.fileno())

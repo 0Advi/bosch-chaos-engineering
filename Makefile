@@ -1,6 +1,8 @@
 PYTHON ?= python3
 
-.PHONY: help bootstrap validate build start stop status smoke verify test schemas preflight flags capabilities
+.PHONY: help bootstrap validate build start stop status smoke verify test schemas preflight flags capabilities \
+	probe baseline derive-policy runs abort reconcile api report test-sandbox \
+	diagnose eval-baseline eval-model
 help:
 	@echo "bootstrap  Fetch pinned upstream source"
 	@echo "validate   Validate the selected deployment without starting containers"
@@ -15,6 +17,18 @@ help:
 	@echo "preflight  Check sandbox identity and isolation (read-only)"
 	@echo "flags      Verify the sandbox-owned flag file (and runtime if running)"
 	@echo "capabilities  List the typed fault capability catalog"
+	@echo "probe      One synthetic checkout correlated with traces/logs (read-only)"
+	@echo "baseline   Measure a healthy payment baseline (about 4 minutes)"
+	@echo "derive-policy BASELINES=\"a.json b.json\"  Write config/payment_policy.yaml"
+	@echo "runs       Show unfinished fault runs"
+	@echo "abort RUN=<id>  Abort a run; it is restored and recovery is verified"
+	@echo "reconcile  Restore runs whose controller died (after a crash/restart)"
+	@echo "api        Start the local controller API on http://127.0.0.1:8765"
+	@echo "report RUN=<id>  Export evidence and print the run report"
+	@echo "test-sandbox  Opt-in checks against the running dedicated sandbox"
+	@echo "diagnose RUN=<id>  Blind, evidence-grounded model diagnosis of a finished run"
+	@echo "eval-baseline  Held-out evaluation with the rule baseline (free)"
+	@echo "eval-model     Held-out evaluation with Claude (needs credentials; costs money)"
 
 bootstrap:
 	git submodule update --init --recursive
@@ -42,3 +56,40 @@ flags:
 	$(PYTHON) scripts/verify_flags.py
 capabilities:
 	$(PYTHON) -m controller.cli capabilities
+
+# Node 20+ is required for the browser-independent workbench tests.
+NODE ?= node
+.PHONY: workbench workbench-fixture test-workbench release-check
+workbench:
+	$(PYTHON) -m workbench.controller_server --port 8095
+workbench-fixture:
+	$(PYTHON) -m workbench.server --port 8096
+test-workbench:
+	$(NODE) --test workbench/state.test.mjs
+probe:
+	$(PYTHON) -m controller.cli probe
+baseline:
+	$(PYTHON) -m controller.cli baseline
+derive-policy:
+	$(PYTHON) -m controller.cli derive-policy $(BASELINES) --write
+runs:
+	$(PYTHON) -m controller.cli status
+abort:
+	$(PYTHON) -m controller.cli abort $(RUN)
+reconcile:
+	$(PYTHON) -m controller.cli reconcile
+api:
+	$(PYTHON) -m controller.cli serve
+report:
+	$(PYTHON) -m controller.cli report $(RUN)
+test-sandbox:
+	BOSCH_SANDBOX_TESTS=1 $(PYTHON) -m pytest -q -s -m sandbox tests/integration
+diagnose:
+	$(PYTHON) -m controller.cli diagnose $(RUN)
+eval-baseline:
+	$(PYTHON) -m evals.run --split heldout --diagnoser baseline --out artifacts/results/evaluations
+eval-model:
+	$(PYTHON) -m evals.run --split heldout --diagnoser model
+
+release-check:
+	$(PYTHON) scripts/release_check.py
