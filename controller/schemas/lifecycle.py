@@ -30,7 +30,8 @@ TERMINAL = frozenset(s for s, nxt in TRANSITIONS.items() if not nxt)
 BLOCKING = frozenset({S.ARMED, S.RUNNING, S.RESTORING, S.VERIFYING_RECOVERY, S.NEEDS_ATTENTION})
 
 _ABORT_REASONS = frozenset({R.MANUAL_ABORT, R.DEADLINE, R.PROTECTED_PATH_DEGRADED,
-                            R.OBSERVATION_LOSS, R.CONFIG_CONFLICT})
+                            R.OBSERVATION_LOSS, R.CONFIG_CONFLICT, R.CONTROLLER_LOST,
+                            R.PRECONDITION_FAILED})
 
 
 class IllegalTransition(ValueError):

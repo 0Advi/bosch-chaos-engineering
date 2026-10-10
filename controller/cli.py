@@ -1,9 +1,10 @@
-"""Operator CLI: python -m controller.cli {capabilities,preflight,plan,run,probe,baseline,
-compare-baselines,derive-policy}"""
+"""Operator CLI: python -m controller.cli {capabilities,preflight,plan,run,abort,status,events,
+reconcile,restore,probe,baseline,compare-baselines,derive-policy}"""
 from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import sys
 import subprocess
@@ -16,13 +17,17 @@ from .baseline.measure import Environment, load_criteria, measure
 from .baseline.runtime import DockerRuntime, upstream_revision
 from .catalog import Unsupported
 from .executor import runner
+from .executor.environment import LiveEnvironment
+from .executor.recovery import drive_recovery
 from .observer import endpoints
 from .observer.fixtures import protected_probes, run_attempt
 from .observer.http import Shop
 from .observer.observer import observe_checkout
 from .observer.telemetry import Telemetry, opensearch_log_search
 from .safety import sandbox
-from .schemas import Plan, SandboxRef
+from .schemas import Plan, RunState, SandboxRef
+from .store import RunStore
+from . import watchdog
 
 
 def live_environment(timeout: float, logs: bool = True) -> Environment:
@@ -37,6 +42,32 @@ def live_environment(timeout: float, logs: bool = True) -> Environment:
         sandbox=SandboxRef(docker_context=context, daemon_id=daemon, compose_project=spec["compose_project"]),
         runtime=DockerRuntime(spec["compose_project"]), upstream_revision=upstream_revision(),
         log=lambda line: print(line, file=sys.stderr, flush=True))
+
+
+def _run_view(run: dict) -> dict:
+    keep = ("run_id", "capability_id", "state", "stop_reason", "result", "last_seq", "controller_pid",
+            "watchdog_pid", "restorer", "abort_requested", "fault_deadline_at", "hard_deadline_at")
+    return {k: run[k] for k in keep}
+
+
+def _runs_command(args) -> dict:
+    store = RunStore(runner.DB_PATH)
+    if args.cmd == "abort":
+        return {"ok": store.request_abort(args.run_id), "run_id": args.run_id,
+                "note": "the controller (or watchdog) restores and verifies recovery"}
+    if args.cmd == "status":
+        runs = [store.get(args.run_id)] if args.run_id else store.active_runs()
+        return {"ok": True, "runs": [_run_view(r) for r in runs]}
+    if args.cmd == "events":
+        return {"ok": True, "events": [e.model_dump(mode="json") for e in store.events(args.run_id, args.after)]}
+    env = LiveEnvironment()
+    if args.cmd == "reconcile":
+        return {"ok": True, "runs": watchdog.reconcile_all(store, env)}
+    run = store.get(args.run_id)
+    if run["state"] != RunState.NEEDS_ATTENTION.value:
+        return {"ok": False, "error": "NOT_NEEDS_ATTENTION", "state": run["state"]}
+    state = drive_recovery(store, env, args.run_id, None, f"operator:{os.getpid()}")
+    return {"ok": state != RunState.NEEDS_ATTENTION, "state": state.value}
 
 
 def _param(text: str):
@@ -58,9 +89,18 @@ def main(argv=None) -> int:
     plan.add_argument("--impact", default="checkout fails while protected paths stay healthy")
     plan.add_argument("--baseline-ref")
     plan.add_argument("-o", "--out", type=Path)
-    run = sub.add_parser("run", help="preview a plan; --live is unavailable in P0")
+    run = sub.add_parser("run", help="dry-run a plan; --live executes if every gate passes")
     run.add_argument("plan_file", type=Path)
     run.add_argument("--live", action="store_true")
+    for name, text in [("abort", "request abort + restoration of an active run"),
+                       ("restore", "operator retry of restoration for a NEEDS_ATTENTION run")]:
+        sub.add_parser(name, help=text).add_argument("run_id")
+    status = sub.add_parser("status", help="show one run, or all unfinished runs")
+    status.add_argument("run_id", nargs="?")
+    events = sub.add_parser("events", help="ordered run events after a sequence number")
+    events.add_argument("run_id")
+    events.add_argument("--after", type=int, default=0)
+    sub.add_parser("reconcile", help="restore runs whose controller died (run after a restart)")
     probe = sub.add_parser("probe", help="one valid checkout + protected probes, correlated with telemetry")
     probe.add_argument("--fixture", default="valid",
                        choices=["valid", "invalid_number", "expired", "unsupported_type"])
@@ -94,6 +134,8 @@ def main(argv=None) -> int:
                     args.out.write_text(json.dumps(out["result"], indent=2) + "\n")
         elif args.cmd == "run":
             out = runner.execute(Plan.model_validate_json(args.plan_file.read_text()), live=args.live)
+        elif args.cmd in ("abort", "status", "events", "reconcile", "restore"):
+            out = _runs_command(args)
         elif args.cmd == "probe":
             criteria = load_criteria()["workload"]
             env = live_environment(criteria["request_timeout_seconds"])
@@ -124,6 +166,8 @@ def main(argv=None) -> int:
         out = {"ok": False, **refusal.as_dict()}
     except payment_policy.PolicyError as error:
         out = {"ok": False, "error": "POLICY_NOT_DERIVABLE", "message": str(error)}
+    except KeyError as error:
+        out = {"ok": False, "error": "UNKNOWN_RUN", "message": str(error)}
     except ValidationError as error:
         if args.cmd == "run":
             out = {"ok": False, "error": "INVALID_PLAN", "message": "plan does not match the contract"}

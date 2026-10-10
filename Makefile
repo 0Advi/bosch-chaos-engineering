@@ -1,7 +1,7 @@
 PYTHON ?= python3
 
 .PHONY: help bootstrap validate build start stop status smoke verify test schemas preflight flags capabilities \
-	probe baseline derive-policy
+	probe baseline derive-policy runs abort reconcile
 help:
 	@echo "bootstrap  Fetch pinned upstream source"
 	@echo "validate   Validate the selected deployment without starting containers"
@@ -19,6 +19,9 @@ help:
 	@echo "probe      One synthetic checkout correlated with traces/logs (read-only)"
 	@echo "baseline   Measure a healthy payment baseline (about 4 minutes)"
 	@echo "derive-policy BASELINES=\"a.json b.json\"  Write config/payment_policy.yaml"
+	@echo "runs       Show unfinished fault runs"
+	@echo "abort RUN=<id>  Abort a run; it is restored and recovery is verified"
+	@echo "reconcile  Restore runs whose controller died (after a crash/restart)"
 
 bootstrap:
 	git submodule update --init --recursive
@@ -52,3 +55,9 @@ baseline:
 	$(PYTHON) -m controller.cli baseline
 derive-policy:
 	$(PYTHON) -m controller.cli derive-policy $(BASELINES) --write
+runs:
+	$(PYTHON) -m controller.cli status
+abort:
+	$(PYTHON) -m controller.cli abort $(RUN)
+reconcile:
+	$(PYTHON) -m controller.cli reconcile

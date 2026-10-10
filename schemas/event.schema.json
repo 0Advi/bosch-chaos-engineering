@@ -25,7 +25,9 @@
         "protected_path_degraded",
         "observation_loss",
         "config_conflict",
-        "adapter_error"
+        "adapter_error",
+        "controller_lost",
+        "precondition_failed"
       ],
       "title": "StopReason",
       "type": "string"

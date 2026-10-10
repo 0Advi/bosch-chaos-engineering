@@ -82,6 +82,7 @@ def grpc_argv(cap: Capability, params: dict, network: str, run_id: str, timeout:
     cfg = cap.adapter_config
     payload = json.dumps({"amount": MONEY_MODES[params["mode"]], "creditCard": FAKE_CARD})
     return ["docker", "run", "--rm", "--network", network, "--label", f"bosch.chaos.run={run_id}",
+            "--label", "bosch.chaos.tool=grpcurl",
             "-v", f"{PROTO_DIR}:/protos:ro", cfg["grpcurl_image"],
             "-plaintext", "-max-time", str(int(timeout)), "-format-error",
             "-import-path", "/protos", "-proto", "demo.proto",

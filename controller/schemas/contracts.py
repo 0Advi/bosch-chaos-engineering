@@ -178,6 +178,8 @@ class StopReason(str, Enum):
     OBSERVATION_LOSS = "observation_loss"
     CONFIG_CONFLICT = "config_conflict"
     ADAPTER_ERROR = "adapter_error"
+    CONTROLLER_LOST = "controller_lost"
+    PRECONDITION_FAILED = "precondition_failed"
 
 
 class Revisions(BaseModel):
