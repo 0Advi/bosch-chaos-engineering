@@ -1,0 +1,31 @@
+{
+  "kind": "startup_workload_snapshot",
+  "recorded_at": "2026-10-10T05:54:52.542258+00:00",
+  "source": "http://localhost:8081/loadgen/stats/requests",
+  "state": "running",
+  "user_count": 1,
+  "total_rps": 0.05024641498616041,
+  "fail_ratio": 0.2,
+  "request_count": 10,
+  "failure_count": 2,
+  "agent_task_present": false,
+  "errors": [
+    {
+      "error": "HTTPError('504 Server Error: Gateway Timeout for url: /')",
+      "first_seen": 1791611435.6996403,
+      "last_seen": 1791611435.6996403,
+      "method": "GET",
+      "name": "/",
+      "occurrences": 1
+    },
+    {
+      "error": "HTTPError('504 Server Error: Gateway Timeout for url: /api/products/OLJCESPC7Z')",
+      "first_seen": 1791611526.848616,
+      "last_seen": 1791611526.848616,
+      "method": "GET",
+      "name": "/api/products/OLJCESPC7Z",
+      "occurrences": 1
+    }
+  ],
+  "limitation": "Small cumulative startup sample including warmup; not a controlled steady-state baseline."
+}

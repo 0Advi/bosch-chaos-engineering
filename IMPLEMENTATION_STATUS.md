@@ -46,7 +46,11 @@ pressure, intermittent gateway timeouts, and generated requests to the excluded
 shopping-agent service. The overlay now provides a longer startup grace period,
 a shop-only workload adapter, one-second telemetry batching, and 30-second
 host/container polling. The latest full workflow passed after these adjustments;
-sustained stability still requires baseline measurement.
+some generated requests still timed out. A small cumulative startup sample had
+2 failures in 10 requests (20%), while the full synthetic workflow passed. See
+[artifacts/startup_workload_snapshot.json](artifacts/startup_workload_snapshot.json).
+This sample includes warmup and does not establish steady-state performance.
+Stabilizing the runtime and measuring a healthy baseline remain the next priority.
 
 The preview runs in Docker Desktop on this machine. Its project/network separation
 is verified configuration, but this does not establish the dedicated runtime
