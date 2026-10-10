@@ -75,8 +75,11 @@ socket and host filesystem for observation.
 
 ## Next action
 
-Measure a repeatable healthy baseline and confirm trace dependencies. Then
-implement deterministic safety before enabling one bounded recommendation outage
-in a dedicated sandbox. Evaluate the proposed thresholds against actual
-measurements. Recommendation/solution generation and before/after comparison
-are still future work; the running upstream dashboards do not implement those.
+Measure a repeatable healthy payment baseline and confirm trace dependencies.
+The payment evaluation design and disabled scenario catalog are documented in
+[docs/payment-failure-plan.md](docs/payment-failure-plan.md). Implement deterministic
+safety and a guarded flag executor before enabling a payment scenario in a
+dedicated sandbox. The existing disabled execution contract still describes the
+original recommendation outage. Evaluate payment-specific thresholds against
+actual measurements. Solution generation and before/after comparison remain
+future work; the running upstream dashboards do not implement those.

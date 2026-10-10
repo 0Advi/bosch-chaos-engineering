@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "execution_enabled": false,
+  "kind": "proposed_scenario_catalog",
+  "upstream_revision": "dedc0178918e260823323b8d95005a8cb924b007",
+  "application": "local_astronomy_shop",
+  "runner_implemented": false,
+  "scope": "synthetic_payment_only",
+  "plan": "docs/payment-failure-plan.md",
+  "proposed_limits": {
+    "target_duration_seconds": 15,
+    "hard_max_duration_seconds": 30,
+    "concurrent_experiments": 1
+  },
+  "prerequisites": [
+    "stable_measured_baseline",
+    "dedicated_verified_sandbox",
+    "isolated_flag_storage",
+    "guarded_executor_with_watchdog",
+    "fresh_correlated_observations",
+    "payment_specific_abort_policy",
+    "exact_prior_state_restoration_and_recovery_verification"
+  ],
+  "affected_probes": [
+    "POST /api/checkout"
+  ],
+  "protected_probes": [
+    "GET /",
+    "GET /api/products",
+    "GET /api/cart",
+    "POST /api/cart"
+  ],
+  "scenarios": [
+    {
+      "id": "payment-handler-failure",
+      "support": "upstream_flag",
+      "target_service": "payment",
+      "flag": "paymentFailure",
+      "variant": "100%",
+      "numeric_value": 1,
+      "expected_mechanism": "payment_charge_handler_rejects_request",
+      "expected_evidence": [
+        "payment_error_span",
+        "charge_exception_invalid_token",
+        "checkout_failure",
+        "payment_health_remains_serving"
+      ],
+      "runtime_confirmation_pending": true
+    },
+    {
+      "id": "payment-caller-unreachable",
+      "support": "upstream_flag",
+      "target_service": "checkout",
+      "affected_dependency": "payment",
+      "flag": "paymentUnreachable",
+      "variant": "on",
+      "boolean_value": true,
+      "expected_mechanism": "checkout_uses_badAddress:50051",
+      "expected_evidence": [
+        "outgoing_charge_connection_error",
+        "checkout_failure",
+        "payment_can_remain_healthy"
+      ],
+      "runtime_confirmation_pending": true
+    },
+    {
+      "id": "payment-invalid-card-control",
+      "support": "synthetic_request_fixture",
+      "target_service": "payment",
+      "expected_mechanism": "card_validation_rejection",
+      "expected_evidence": [
+        "validation_exception",
+        "checkout_decline",
+        "cart_retained"
+      ],
+      "is_infrastructure_chaos": false,
+      "runtime_confirmation_pending": true
+    },
+    {
+      "id": "payment-process-outage",
+      "support": "requires_guarded_container_executor",
+      "target_service": "payment",
+      "expected_mechanism": "sandbox_payment_process_stopped",
+      "runtime_confirmation_pending": true
+    },
+    {
+      "id": "payment-delay-or-response-loss",
+      "support": "requires_scoped_test_hook_or_proxy",
+      "target_service": "payment",
+      "expected_mechanism": "delay_or_post_success_response_loss",
+      "runtime_confirmation_pending": true
+    },
+    {
+      "id": "payment-duplicate-transaction",
+      "support": "requires_idempotency_key_and_durable_fake_ledger",
+      "target_service": "payment",
+      "expected_mechanism": "repeat_logical_order_after_ambiguous_outcome",
+      "runtime_confirmation_pending": true
+    }
+  ]
+}

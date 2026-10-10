@@ -23,10 +23,13 @@ accounting, fraud detection, the shopping AI agent/MCP/chatbot, and profiling
 services are not enabled. Their code remains available in the pinned upstream
 submodule without becoming runtime dependencies of this configuration.
 
-Recommendation is the proposed first bounded outage target. It is a separate,
-stateless feature path; upstream classifies it as medium criticality. Confirm its
-actual impact before allowing an experiment. The controller's initial contract
-is in [config/experiments.yaml](config/experiments.yaml), with execution disabled.
+Recommendation was the initial proposed bounded outage target. The current
+payment evaluation plan uses upstream payment failure/unreachable flags; see
+[docs/payment-failure-plan.md](docs/payment-failure-plan.md) and the disabled
+[scenario catalog](config/payment_scenarios.proposed.json). The existing controller
+contract in [config/experiments.yaml](config/experiments.yaml) still contains only
+the proposed recommendation outage, with execution disabled. Payment execution
+requires its own baseline, guarded executor, and verified restoration.
 
 ## Layout
 
