@@ -8,10 +8,13 @@ latency and W3C trace id.
 from __future__ import annotations
 
 import json
+import secrets
 import threading
 import time
 from typing import Callable
+from urllib.error import HTTPError
 from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 from uuid import uuid4
 
 from controller.observer.endpoints import app_url
@@ -38,6 +41,7 @@ class Workload:
         self.lock = threading.Lock()
         self.threads: list[threading.Thread] = []
         self.journeys = 0
+        self._image_delay, self._image_flag_at = 0, -10.0
 
     def t(self) -> float:
         return round(time.monotonic() - self.started, 2)
@@ -91,8 +95,34 @@ class Workload:
                 ("catalog", lambda i: shop.call("/api/products?currencyCode=EUR")),
                 ("product", product), ("recommendations", recommendations),
                 ("ads", lambda i: shop.call("/api/data?contextKeys=telescopes")),
-                ("image", lambda i: shop.call(f"/images/products/{PICTURES[i % len(PICTURES)]}")),
+                ("image", lambda i: self._image(PICTURES[i % len(PICTURES)])),
                 ("shipping", shipping)]
+
+    def _image(self, picture: str) -> dict:
+        """Load an image the way the browser's ProductCard does: it reads the imageSlowLoad flag
+        and sends it to Envoy as x-envoy-fault-delay-request (the delay is applied by Envoy)."""
+        now = time.monotonic()
+        if now - self._image_flag_at > 2:
+            from .faults import live_flags
+            variant = (live_flags() or {}).get("imageSlowLoad", "off")
+            self._image_delay = {"5sec": 5000, "10sec": 10000}.get(variant, 0)
+            self._image_flag_at = now
+        trace_id = secrets.token_hex(16)
+        req = Request(app_url() + f"/images/products/{picture}", headers={
+            "x-envoy-fault-delay-request": str(self._image_delay), "Cache-Control": "no-cache",
+            "traceparent": f"00-{trace_id}-{secrets.token_hex(8)}-01", "baggage": "synthetic_request=true"})
+        result = {"trace_id": trace_id, "http_status": None, "transport_error": None}
+        started = time.monotonic()
+        try:
+            with urlopen(req, timeout=TIMEOUT_S) as resp:
+                resp.read()
+                result["http_status"] = resp.status
+        except HTTPError as error:
+            result["http_status"] = error.code
+        except Exception as error:
+            result["transport_error"] = "timeout" if "timed out" in str(error) else type(error).__name__
+        result["latency_ms"] = round((time.monotonic() - started) * 1000, 1)
+        return result
 
     def _probe(self, endpoint: str, call):
         i = 0
