@@ -12,6 +12,9 @@ There is no executable fault command yet.
 See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the phased task backlog,
 five-person ownership split, dependencies, and acceptance checks for the payment
 chaos agent, user workbench, and verified application fixes.
+For a presentation-oriented explanation of the intended project, see the
+[judge-facing brief](docs/judges-brief.md); it distinguishes planned capabilities
+from currently verified work.
 
 ## Selected components
 
