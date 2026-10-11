@@ -523,7 +523,7 @@ $("#tabs").addEventListener("click", (e) => { if (e.target.dataset.tab) { evTab 
 $("#run").addEventListener("click", () => startJob("/api/run", designerParams()));
 $("#plan-btn").addEventListener("click", () => { feed = []; renderFeed(); $("#plan-out").innerHTML = `<p class="muted">Planner agent is reading the dependency map…</p>`; startJob("/api/plan", {}, { reset: false }); });
 $("#campaign-btn").addEventListener("click", () => {
-  const exps = plan.experiments.slice(0, 3).map((e) => ({ scenario: e.scenario, target: e.target, variant: e.variant, fault_s: Math.min(e.fault_s, 25), title: e.title }));
+  const exps = plan.experiments.slice(0, 5).map((e) => ({ scenario: e.scenario, target: e.target, variant: e.variant, fault_s: Math.min(e.fault_s, 25), title: e.title }));
   campaign = { experiments: exps, index: 0 }; renderCampaign();
   startJob("/api/campaign", { experiments: exps });
   location.hash = "#live";

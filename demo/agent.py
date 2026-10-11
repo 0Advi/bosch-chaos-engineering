@@ -48,7 +48,7 @@ Emit = Callable[[str, dict], None]
 
 # ------------------------------------------------------------------ provider
 def provider_info() -> dict:
-    if os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"):
+    if os.environ.get("GEMINI_API_KEYS") or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"):
         return {"provider": "gemini", "model": os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")}
     if os.environ.get("GROQ_API_KEY"):
         return {"provider": "groq", "model": os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")}
@@ -103,13 +103,19 @@ class ModelPool:
         if not self.provider:
             raise RuntimeError("No LLM configured: put GEMINI_API_KEY or GROQ_API_KEY in .env and restart.")
         extra = os.environ.get("GEMINI_FALLBACK_MODELS", "") if self.provider == "gemini" else ""
-        self.models = list(dict.fromkeys([info["model"]] + [m.strip() for m in extra.split(",") if m.strip()]))
+        models = list(dict.fromkeys([info["model"]] + [m.strip() for m in extra.split(",") if m.strip()]))
+        keys = [k.strip() for k in os.environ.get("GEMINI_API_KEYS", "").split(",") if k.strip()]
+        keys = keys or [os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or ""]
+        if self.provider != "gemini":
+            keys = [""]
+        # Each (model, key) pair has its own free daily quota; try them in order.
+        self.slots = [(m, i, k) for m in models for i, k in enumerate(keys)]
+        self.models = models
         self.current = info["model"]
 
-    def _llm(self, name: str):
+    def _llm(self, name: str, key: str = ""):
         if self.provider == "gemini":
             from langchain_google_genai import ChatGoogleGenerativeAI
-            key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
             return ChatGoogleGenerativeAI(model=name, temperature=0.2, max_retries=0, google_api_key=key,
                                           timeout=120, callbacks=[TIMING],
                                           thinking_level=os.environ.get("GEMINI_THINKING", "low"))
@@ -122,17 +128,21 @@ class ModelPool:
 
     def call(self, build, messages):
         last = None
-        for name in [m for m in self.models if m not in EXHAUSTED]:
+        for name, index, key in [s for s in self.slots if f"{s[0]}#{s[1]}" not in EXHAUSTED]:
             for attempt in range(4):
                 try:
-                    result = build(self._llm(name)).invoke(messages)
+                    result = build(self._llm(name, key)).invoke(messages)
                     self.current = name
                     return result
                 except Exception as error:
                     kind, last = _quota_kind(error), error
+                    if "UNAUTHENTICATED" in str(error) or "API_KEY_INVALID" in str(error):
+                        EXHAUSTED.add(f"{name}#{index}")
+                        self._note(f"key {index + 1} rejected (invalid or revoked), switching key")
+                        break
                     if kind == "day":
-                        EXHAUSTED.add(name)
-                        self._note(f"{name}: free daily quota used up, switching model")
+                        EXHAUSTED.add(f"{name}#{index}")
+                        self._note(f"{name} (key {index + 1}): free daily quota used up, switching key")
                         break
                     if kind in ("minute", "unavailable") and attempt < 3:
                         self._note(f"{name}: {'rate limited' if kind == 'minute' else 'overloaded'}, retrying")

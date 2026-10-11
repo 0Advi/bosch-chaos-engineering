@@ -142,7 +142,7 @@ class Experiment:
             self.mark("baseline")
             self.wait(self.durations["baseline"])
             # Health gate: every path needs >= 3 samples at >= 80 % success. A host stall can
-            # leave a path with one slow sample, so extend the baseline (up to 20 s) before refusing.
+            # leave a path with one slow sample, so extend the baseline (up to 30 s) before refusing.
             extra = 0
             while True:
                 self.base_stats = topology.endpoint_stats(self.workload.records, "baseline")
@@ -150,7 +150,7 @@ class Experiment:
                         if v["n"] < 3 or v["success"] < 80]
                 if not sick:
                     break
-                if extra >= 20:
+                if extra >= 30:
                     raise Aborted(f"health gate: baseline unhealthy ({', '.join(sick)}); not injecting")
                 if extra == 0:
                     self.emit("log", {"level": "info", "message": "Baseline not steady yet "
