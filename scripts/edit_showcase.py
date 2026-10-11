@@ -23,6 +23,15 @@ def ev_first(ev, kind, n=None):
     return next((e for e in ev if e["kind"] == kind and (n is None or e.get("n") == n)), None)
 
 
+def wrap(text: str, width: int = 92) -> str:
+    """Burned-in captions: at most two lines that fit the 1920 px frame."""
+    import textwrap
+    lines = []
+    for part in text.split("\n"):
+        lines += textwrap.wrap(part, width) or [""]
+    return "\n".join(lines[:3])
+
+
 def build(out: Path) -> list[dict]:
     doc = json.loads((out / "events.json").read_text())
     ev, starts = doc["events"], doc["starts"]
@@ -66,16 +75,19 @@ def build(out: Path) -> list[dict]:
         fault_end = min(stop["t"] if stop else live["t"] + 22, live["t"] + 24)
         click = ev_first(ev, "place_order_click", n)
         side(f"s{n}c", live["t"], fault_end, 18, title,
-             f"FAULT LIVE ({short(rec.get('injection'), 55)}). Customer sees: {short(sel.get('expect'), 70)}",
+             f"FAULT LIVE ({short(rec.get('injection'), 55)}). Customer sees: {short(sel.get("expect"), 150)}",
              timer="Order pending" if click and click.get("label") == "during fault" else None)
         recovered = ev_first(ev, "recovered", n)
         if stop and recovered:
             if stop["kind"] == "auto_stopped":
-                cap = f"Guardrail auto-stopped the fault: {short(rec.get('abort_reason'), 80)}"
+                reason = (rec.get("abort_reason") or "").removeprefix("guardrail: ")
+                cap = f"Safety guardrail auto-stopped the fault: {short(reason, 85)}"
             else:
                 cap = (f"'End fault now': fault restored and verified; shop healthy again in "
                        f"{rec.get('time_to_recover_s')} s")
-            side(f"s{n}d", stop["t"], to_dash(recovered) + 2.5, 6, title, cap)
+            # Keep the last ~12 s before recovery at near real speed so the result is readable.
+            end = to_dash(recovered) + 3
+            side(f"s{n}d", max(stop["t"], end - 13), end, 9, title, cap)
         res, blast = ev_first(ev, "results", n), ev_first(ev, "blast", n)
         r = rec.get("resilience") or {}
         b = rec.get("blast_radius") or {}
@@ -99,6 +111,8 @@ def build(out: Path) -> list[dict]:
         full("safety", safety["t"], 9, "Safety controls",
              "Health gate · guardrails auto-stop on blast radius, error rate, latency · 60 s cap\n"
              "Every fault journaled and auto-restored (verified) · kill switch · read-only AI tools")
+    for seg in segs:
+        seg["caption"] = wrap(seg["caption"])
     return segs
 
 

@@ -23,11 +23,27 @@ LAB = "http://127.0.0.1:8099/"
 SHOP = "http://localhost:8081"
 SIZE = {"width": 1440, "height": 900}
 
+# A restarted product-catalog stays sluggish for a while, so its crash goes last.
 SCENARIOS = [
-    {"sid": "service-crash", "target": "product-catalog", "variant": "kill", "kind": "browse"},
     {"sid": "payment-failure", "target": "payment", "variant": "100%", "kind": "order"},
     {"sid": "image-slow-load", "target": "image-provider", "variant": "10sec", "kind": "browse"},
+    {"sid": "service-crash", "target": "product-catalog", "variant": "kill", "kind": "browse"},
 ]
+
+
+async def settle(log: Log, n: int):
+    """Wait until the catalog answers fast three times in a row (the shop has fully recovered)."""
+    from urllib.request import urlopen
+    good, deadline = 0, time.monotonic() + 120
+    while good < 3 and time.monotonic() < deadline:
+        started = time.monotonic()
+        try:
+            await asyncio.to_thread(lambda: urlopen(SHOP + "/api/products?currencyCode=USD", timeout=10).read())
+            good = good + 1 if time.monotonic() - started < 0.5 else 0
+        except Exception:
+            good = 0
+        await asyncio.sleep(1)
+    log.add("dashboard", "settled", n=n, ok=good >= 3)
 
 
 class Log:
@@ -205,7 +221,12 @@ async def main():
             log.add("dashboard", "intro")          # hero + header chips: our own sandbox, all green
             await asyncio.sleep(7)
             for n, spec in enumerate(SCENARIOS, 1):
-                await scenario(lab, shop, log, n, spec, args.fault)
+                await settle(log, n)
+                try:
+                    await scenario(lab, shop, log, n, spec, args.fault)
+                except Exception as error:   # keep recording the other scenarios
+                    log.add("dashboard", "scenario_error", n=n, error=f"{type(error).__name__}: {str(error)[:120]}")
+                    await wait_for(lab, "!busy", 180)
                 await asyncio.sleep(6)
             # Safety controls: guardrails, health gate, journal/restore, kill switch.
             await scroll(lab, "#experiment")

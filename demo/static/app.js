@@ -140,8 +140,9 @@ setInterval(async () => {
   $("#runline").innerHTML = `${phaseClock.name === "fault" ? `<span class="live-banner">FAULT LIVE · ${left}s left</span>` : ""}<b>${esc(PHASE_LABEL[phaseClock.name] || phaseClock.name)}</b> · ${secs}s${planned ? ` of ${planned}s` : ""} · ${n} requests observed${extra}${phaseClock.note ? ` · ${esc(phaseClock.note)}` : ""}`;
 }, 1000);
 
+// Live events arrive ~15/s; redraw the heat-map at most twice a second to keep the browser light.
 let renderPending = false;
-function schedule() { if (!renderPending) { renderPending = true; requestAnimationFrame(() => { renderPending = false; renderLive(); }); } }
+function schedule() { if (!renderPending) { renderPending = true; setTimeout(() => { renderPending = false; renderLive(); }, 500); } }
 
 function handle(ev) {
   const d = ev.data;
@@ -339,7 +340,8 @@ function renderMatrix() {
 
 // ================================================================ topology
 async function renderTopology() {
-  const runId = live.record?.run_id || findings?.run?.run_id;
+  // While a run is live, show only its own blast radius (not the previous run's).
+  const runId = live.run ? live.record?.run_id : findings?.run?.run_id;
   graph = await (await fetch(`/api/topology${runId ? `?run=${runId}` : ""}`)).json();
   const blast = graph.blast;
   const state = (id) => {
