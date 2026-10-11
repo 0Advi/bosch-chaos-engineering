@@ -306,8 +306,8 @@ async function renderTopology() {
   const pos = Object.fromEntries(graph.nodes.map((n) => [n.id, n.xy]));
   const W = 1000, H = 580;
   let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Service dependency graph with blast radius">
-    <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker>
-    <marker id="arrb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--bad)"/></marker></defs>`;
+    <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--edge)"/></marker>
+    <marker id="arrb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--bad)"/></marker></defs>`;
   [["Users", 60], ["Edge", 200], ["Frontend", 350], ["Services", 530], ["Data & downstream", 720], ["Platform", 900]]
     .forEach(([t, x]) => (svg += `<text x="${x}" y="${H - 2}" text-anchor="middle" style="fill:var(--muted);font-size:11px;letter-spacing:.06em">${t.toUpperCase()}</text>`));
   svg += `<rect x="835" y="15" width="130" height="540" rx="10" fill="var(--soft)" stroke="var(--line)"/>`;
@@ -320,7 +320,7 @@ async function renderTopology() {
     let d;
     if (Math.abs(a[0] - b[0]) < 10) { const dx = 70; d = `M${a[0] + 55},${a[1]} C${a[0] + 55 + dx},${a[1]} ${b[0] + 55 + dx},${b[1]} ${b[0] + 55},${b[1]}`; }
     else d = `M${x1},${a[1]} C${(x1 + x2) / 2},${a[1]} ${(x1 + x2) / 2},${b[1]} ${x2},${b[1]}`;
-    svg += `<path d="${d}" fill="none" stroke="${hot ? "var(--bad)" : "var(--line)"}" stroke-width="${hot ? w + 1 : w}" ${e.observed ? "" : 'stroke-dasharray="3 3"'} marker-end="url(#${hot ? "arrb" : "arr"})"><title>${esc(e.from)} → ${esc(e.to)}${e.calls ? ` · ${e.calls} calls (Jaeger, last hour)` : " · static map"}</title></path>`;
+    svg += `<path d="${d}" fill="none" stroke="${hot ? "var(--bad)" : "var(--edge)"}" stroke-width="${hot ? w + 1 : w}" ${e.observed ? "" : 'stroke-dasharray="4 3"'} marker-end="url(#${hot ? "arrb" : "arr"})"><title>${esc(e.from)} → ${esc(e.to)}${e.calls ? ` · ${e.calls} calls (Jaeger, last hour)` : " · static map"}</title></path>`;
   }
   const fills = { injected: ["var(--inj)", "#fff", "var(--inj)"], errors: ["var(--bad)", "#120806", "var(--bad)"], degraded: ["var(--warn)", "#140b04", "var(--warn)"],
     potential: ["var(--card)", "var(--ink)", "var(--warn)"], healthy: ["var(--card)", "var(--ink)", "var(--ok)"] };
