@@ -55,6 +55,9 @@ def render(tmp: Path, seg: dict, out: Path):
             (tmp / f"{seg['name']}.l{i}.txt").write_text(label)
             labels += (f",drawtext=expansion=none:textfile='{tmp / (seg['name'] + f'.l{i}.txt')}':fontfile='{MONO}':fontsize=26:"
                        f"fontcolor=0xa7ada6:x={30 + i * 960}:y=150")
+        if seg.get("timer"):  # real elapsed seconds since the customer's click, on the shop side
+            labels += (f",drawtext=fontfile='{MONO}':fontsize=40:fontcolor=0xff6b57:box=1:boxcolor=0x070707@0.85:"
+                       f"boxborderw=14:x=1000:y=820:text='{seg['timer']}\\: %{{eif\\:t*{speed:.3f}\\:d}} s'")
         vf = (f"[0:v]setpts=PTS/{speed},scale=950:594[a];[1:v]setpts=PTS/{speed},scale=950:594[b];"
               f"[a][b]hstack=inputs=2,pad=1920:1080:5:195:color={BG}{labels},{cap}[v]")
     cmd = [FFMPEG, "-y", "-loglevel", "error", *args, "-filter_complex", vf, "-map", "[v]", "-r", "30",
@@ -73,6 +76,42 @@ def first(events, kind, run=None, video="dashboard", after=0.0, **match):
 def short(text: str, n: int) -> str:
     text = " ".join(str(text or "").split())
     return text if len(text) <= n else text[: n - 1].rstrip() + "…"
+
+
+def customer_moment(ev: list, inj_t: float, rec: dict, run_t: float) -> dict | None:
+    """The moment in the shop video where the injected fault hit the scripted customer, held on screen
+    (~3 s) next to the lab. Uses only what the recording actually captured; returns dashboard-time
+    start, duration and speed, plus an honest caption."""
+    tl = rec.get("timeline") or {}
+    restore_t = run_t + tl.get("restore", 0) - tl.get("baseline", 0)
+    shop = [e for e in ev if e["video"] == "shop" and inj_t - 3 <= e["t"] <= restore_t + 20]
+    for e in shop:  # 1. an order that silently failed
+        if e["kind"] == "checkout_result" and "silently failed" in e.get("outcome", ""):
+            click = e["t"] - e["seconds"] - 0.6
+            dur = e["seconds"] + 1.2
+            return {"start": click + SHOP_LAG, "dur": dur, "speed": dur / 3.2, "timer": "Order pending",
+                    "caption": f"Customer clicks Place order... still on the cart {e['seconds']:.0f} s later, "
+                               "no message: the order silently failed"}
+    for i, e in enumerate(shop):  # 2. a customer step that hung until the browser gave up
+        if e["kind"] == "step_failed":
+            prev = next((p for p in reversed(shop[:i]) if p["kind"] in ("product_loaded", "cart_loaded")), None)
+            if prev:
+                click = prev["t"] + 1.3
+                dur = e["t"] - click + 0.6
+                action = "Add to cart" if prev["kind"] == "product_loaded" else "Place order"
+                return {"start": click + SHOP_LAG, "dur": dur, "speed": dur / 3.2, "timer": f"{action} pending",
+                        "caption": f"Customer clicks {action}... nothing happens for {dur - 0.6:.0f} s: "
+                                   "the request hangs until it times out"}
+    slow = [e for e in shop if e["kind"] in ("home_loaded", "cart_loaded") and e.get("phase") in ("inject", "fault")]
+    if slow:  # 3. no visible failure: show the slowest real page load, honestly captioned
+        e = max(slow, key=lambda x: x.get("seconds") or 0)
+        start = e["t"] - (e.get("seconds") or 0) - 0.4
+        dur = (e.get("seconds") or 0) + 1.0
+        page = "home page" if e["kind"] == "home_loaded" else "cart page"
+        return {"start": start + SHOP_LAG, "dur": dur, "speed": max(1.0, dur / 3.0),
+                "caption": f"Customer view: no visible error, the fault stayed contained; slowest {page} "
+                           f"load {e['seconds']:.1f} s"}
+    return None
 
 
 def plan_segments(out: Path) -> list[dict]:
@@ -94,7 +133,7 @@ def plan_segments(out: Path) -> list[dict]:
         ana_path = RUNS / f"{rid}.analysis.json"
         ana = json.loads(ana_path.read_text()) if ana_path.exists() else {}
         title = f"{n + 1}  Experiment {n}/{len(runs)}: {rs['scenario']} on {rs['target']}"
-        segs.append({"name": f"r{n}a", "kind": "full", "src": dash, "start": rs["t"], "dur": 4, "speed": 1, "title": title,
+        segs.append({"name": f"r{n}a", "kind": "full", "src": dash, "start": rs["t"], "dur": 3.5, "speed": 1, "title": title,
                      "caption": "Hypothesis: " + short(rec.get("hypothesis"), 120)})
         # Injection time: from the director's log, else from the run's own phase timeline
         # (seconds since the run started, which is when the dashboard saw run_start).
@@ -106,6 +145,9 @@ def plan_segments(out: Path) -> list[dict]:
             segs.append({"name": f"r{n}b", "kind": "side", "src": dash, "src2": shop, "start": inj_t - 1, "dur": 15,
                          "target": 10, "title": title,
                          "caption": f"Fault injected ({short(inj_desc, 60)}): live impact in the lab and in the real shop"})
+            hold = customer_moment(ev, inj_t, rec, rs["t"])
+            if hold:
+                segs.append({"name": f"r{n}h", "kind": "side", "src": dash, "src2": shop, "title": title, **hold})
         res = rec.get("resilience") or {}
         blast = rec.get("blast_radius") or {}
         evd = first(ev, "evidence_ready", rid)
@@ -114,7 +156,7 @@ def plan_segments(out: Path) -> list[dict]:
             status = (f"Stopped safely by guardrail: {short(rec.get('abort_reason'), 70)}"
                       if rec.get("status") == "aborted" else
                       f"Recovered in {rec.get('time_to_recover_s')} s · resilience score {res.get('score')}/100")
-            segs.append({"name": f"r{n}c", "kind": "full", "src": dash, "start": evd["t"] + 0.5, "dur": 5, "speed": 1,
+            segs.append({"name": f"r{n}c", "kind": "full", "src": dash, "start": evd["t"] + 0.5, "dur": 4.5, "speed": 1,
                          "title": title, "caption": f"Blast radius: {short(impacted, 70)}\n{status}"})
         an, fx = first(ev, "analysis_ready", rid), first(ev, "fix_shown", rid)
         if an and fx:
