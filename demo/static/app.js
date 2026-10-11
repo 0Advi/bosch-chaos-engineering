@@ -25,6 +25,10 @@ async function loadStatus() {
     fixes ? chip(true, `${fixes} fix deployed`) : "",
     chip(!!llm.provider, llm.provider ? `${llm.provider} · ${llm.model}` : "LLM not configured")].join("");
   if (!$("#scenario").options.length) buildDesigner();
+  $("#st-scenarios").textContent = Object.keys(status.scenarios).length;
+  $("#st-runs").textContent = status.runs.length;
+  $("#st-faults").textContent = faults;
+  $("#st-fault-cell").className = `stat ${faults ? "red" : "green"}`;
   renderHistory();
   setBusy(busy);
 }
@@ -51,17 +55,49 @@ function pickScenario(id, target, variant) {
 
 function setBusy(b) {
   busy = b;
-  for (const id of ["#run", "#plan-btn", "#campaign-btn"]) $(id).disabled = b || (id === "#campaign-btn" && !plan?.experiments?.length);
+  for (const id of ["#run", "#plan-btn", "#campaign-btn", "#hero-plan", "#hero-run"]) $(id).disabled = b || (id === "#campaign-btn" && !plan?.experiments?.length);
   document.querySelectorAll("[data-needs-idle]").forEach((el) => (el.disabled = b));
   $("#run").textContent = b && status?.job === "experiment" ? "Running…" : "Run experiment";
 }
 
 // =================================================================== events
+let lastSeq = 0, phaseClock = null, lostSince = null;
 function connect() {
   if (source) source.close();
+  lastSeq = 0;
   source = new EventSource("/api/events?after=0");
-  source.onmessage = (msg) => handle(JSON.parse(msg.data));
+  source.onmessage = (msg) => {
+    const ev = JSON.parse(msg.data);
+    if (ev.seq <= lastSeq) return;          // replayed after a reconnect
+    lastSeq = ev.seq; lostSince = null;
+    handle(ev);
+  };
+  source.onerror = () => { if (busy && !lostSince) { lostSince = Date.now(); line("Lost connection to the lab server, reconnecting...", "warn"); } };
 }
+
+// Phase countdown + detection of runs that died with the server (never look "stuck").
+const PHASE_LABEL = { baseline: "Baseline (steady state)", inject: "Injecting fault", fault: "Fault active, guardrails armed",
+  restore: "Restoring", recovered: "Recovery check", evidence: "Collecting evidence" };
+setInterval(async () => {
+  if (!busy) return;
+  if (lostSince && Date.now() - lostSince > 6000) {
+    try {
+      const st = await (await fetch("/api/status")).json();
+      if (!st.busy) {
+        lostSince = null; setBusy(false); source?.close();
+        line(`Run interrupted: the lab server restarted or stopped. Active faults: ${st.active_faults.length} (every fault is journaled and restored on restart).`, "error");
+        loadStatus();
+      } else { connect(); }
+    } catch { line("Lab server is not reachable. Start it with: python -m demo.server", "error"); }
+    return;
+  }
+  if (!phaseClock || !live.run) return;
+  const secs = Math.round((Date.now() - phaseClock.at) / 1000);
+  const planned = { baseline: live.run.durations?.baseline, fault: live.run.durations?.fault, recovered: live.run.durations?.recovery }[phaseClock.name];
+  const n = live.records.length;
+  const extra = phaseClock.name === "evidence" ? " (waiting for traces and metrics to flush, up to ~40 s)" : "";
+  $("#runline").innerHTML = `<b>${esc(PHASE_LABEL[phaseClock.name] || phaseClock.name)}</b> · ${secs}s${planned ? ` of ${planned}s` : ""} · ${n} requests observed${extra}${phaseClock.note ? ` · ${esc(phaseClock.note)}` : ""}`;
+}, 1000);
 
 let renderPending = false;
 function schedule() { if (!renderPending) { renderPending = true; requestAnimationFrame(() => { renderPending = false; renderLive(); }); } }
@@ -76,6 +112,7 @@ function handle(ev) {
       break;
     case "phase":
       live.timeline[d.name] = d.t;
+      phaseClock = { name: d.name, at: Date.now(), note: d.description || (d.results || []).join("; ") || (d.ttr != null ? `recovered in ${d.ttr}s` : "") };
       if (d.name === "inject") line(`Fault injected: ${d.description}`);
       else if (d.name === "restore") line(`Fault removed: ${(d.results || []).join("; ")}`);
       else if (d.name === "recovered") line(`All healthy paths recovered ${d.ttr}s after restore`);
@@ -104,7 +141,9 @@ function handle(ev) {
       if (findings) { findings.autofix = d; renderFindings(); }
       line(d.stage === "deployed" ? `Fix deployed to ${d.service}: ${d.message}` : `Deploying fix to ${d.file}…`); break;
     case "comparison": if (findings) { findings.comparison = d; renderFindings(); } loadStatus(); break;
-    case "done": setBusy(false); loadStatus(); renderStepper(); break;
+    case "done": phaseClock = null; setBusy(false); loadStatus(); renderStepper();
+      if (live.record) line(live.record.status === "completed" ? `Finished: ${live.record.title} on ${live.record.target}. Score ${live.record.resilience?.score ?? "–"}/100.` : `Stopped safely: ${live.record.abort_reason}`, live.record.status === "completed" ? "" : "warn");
+      break;
   }
 }
 
@@ -267,8 +306,8 @@ async function renderTopology() {
   const pos = Object.fromEntries(graph.nodes.map((n) => [n.id, n.xy]));
   const W = 1000, H = 580;
   let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Service dependency graph with blast radius">
-    <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker>
-    <marker id="arrb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--bad)"/></marker></defs>`;
+    <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--edge)"/></marker>
+    <marker id="arrb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--bad)"/></marker></defs>`;
   [["Users", 60], ["Edge", 200], ["Frontend", 350], ["Services", 530], ["Data & downstream", 720], ["Platform", 900]]
     .forEach(([t, x]) => (svg += `<text x="${x}" y="${H - 2}" text-anchor="middle" style="fill:var(--muted);font-size:11px;letter-spacing:.06em">${t.toUpperCase()}</text>`));
   svg += `<rect x="835" y="15" width="130" height="540" rx="10" fill="var(--soft)" stroke="var(--line)"/>`;
@@ -281,9 +320,9 @@ async function renderTopology() {
     let d;
     if (Math.abs(a[0] - b[0]) < 10) { const dx = 70; d = `M${a[0] + 55},${a[1]} C${a[0] + 55 + dx},${a[1]} ${b[0] + 55 + dx},${b[1]} ${b[0] + 55},${b[1]}`; }
     else d = `M${x1},${a[1]} C${(x1 + x2) / 2},${a[1]} ${(x1 + x2) / 2},${b[1]} ${x2},${b[1]}`;
-    svg += `<path d="${d}" fill="none" stroke="${hot ? "var(--bad)" : "var(--line)"}" stroke-width="${hot ? w + 1 : w}" ${e.observed ? "" : 'stroke-dasharray="3 3"'} marker-end="url(#${hot ? "arrb" : "arr"})"><title>${esc(e.from)} → ${esc(e.to)}${e.calls ? ` · ${e.calls} calls (Jaeger, last hour)` : " · static map"}</title></path>`;
+    svg += `<path d="${d}" fill="none" stroke="${hot ? "var(--bad)" : "var(--edge)"}" stroke-width="${hot ? w + 1 : w}" ${e.observed ? "" : 'stroke-dasharray="4 3"'} marker-end="url(#${hot ? "arrb" : "arr"})"><title>${esc(e.from)} → ${esc(e.to)}${e.calls ? ` · ${e.calls} calls (Jaeger, last hour)` : " · static map"}</title></path>`;
   }
-  const fills = { injected: ["#8b1e3f", "#fff", "#8b1e3f"], errors: ["var(--bad)", "#fff", "var(--bad)"], degraded: ["var(--warn)", "#fff", "var(--warn)"],
+  const fills = { injected: ["var(--inj)", "#fff", "var(--inj)"], errors: ["var(--bad)", "#120806", "var(--bad)"], degraded: ["var(--warn)", "#140b04", "var(--warn)"],
     potential: ["var(--card)", "var(--ink)", "var(--warn)"], healthy: ["var(--card)", "var(--ink)", "var(--ok)"] };
   for (const n of graph.nodes) {
     const [x, y] = n.xy, st = n.platform ? "platform" : state(n.id);
@@ -484,7 +523,7 @@ $("#tabs").addEventListener("click", (e) => { if (e.target.dataset.tab) { evTab 
 $("#run").addEventListener("click", () => startJob("/api/run", designerParams()));
 $("#plan-btn").addEventListener("click", () => { feed = []; renderFeed(); $("#plan-out").innerHTML = `<p class="muted">Planner agent is reading the dependency map…</p>`; startJob("/api/plan", {}, { reset: false }); });
 $("#campaign-btn").addEventListener("click", () => {
-  const exps = plan.experiments.slice(0, 3).map((e) => ({ scenario: e.scenario, target: e.target, variant: e.variant, fault_s: Math.min(e.fault_s, 25), title: e.title }));
+  const exps = plan.experiments.slice(0, 5).map((e) => ({ scenario: e.scenario, target: e.target, variant: e.variant, fault_s: Math.min(e.fault_s, 25), title: e.title }));
   campaign = { experiments: exps, index: 0 }; renderCampaign();
   startJob("/api/campaign", { experiments: exps });
   location.hash = "#live";
@@ -503,6 +542,21 @@ document.addEventListener("click", async (e) => {
   if (t.dataset.analyse) { await openRun(t.dataset.analyse); feed = []; startJob("/api/analyse", { run_id: t.dataset.analyse }, { reset: false }); }
   if (t.dataset.autofix) { feed = []; renderFeed(); findings.comparison = null; findings.autofix = { stage: "starting" }; renderFindings(); startJob("/api/autofix", { run_id: t.dataset.autofix }); }
   if (t.dataset.rollback) { t.disabled = true; line(`Rolling back fix on ${t.dataset.rollback}…`); const r = await post("/api/rollback", { service: t.dataset.rollback }); if (r) line(`Fix rolled back: ${r.service} recreated from the original image`); await loadStatus(); renderFindings(); }
+});
+
+// Hero, copy-command and keyboard shortcuts (P plan, R open the designer, Shift+K kill switch).
+$("#hero-plan").addEventListener("click", () => { location.hash = "#plan"; $("#plan-btn").click(); });
+$("#hero-run").addEventListener("click", () => { location.hash = "#experiment"; $("#scenario").focus({ preventScroll: true }); });
+$("#copy-cmd").addEventListener("click", async () => {
+  const label = $("#copy-cmd span"), text = label.textContent;
+  try { await navigator.clipboard.writeText(text); label.textContent = "copied ✓"; } catch { label.textContent = "copy failed"; }
+  setTimeout(() => (label.textContent = text), 1400);
+});
+document.addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey || ["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement?.tagName)) return;
+  if (e.key === "K" && e.shiftKey) { e.preventDefault(); $("#kill").click(); }
+  else if (e.key.toLowerCase() === "p" && !e.shiftKey && !$("#plan-btn").disabled) { e.preventDefault(); $("#hero-plan").click(); }
+  else if (e.key.toLowerCase() === "r" && !e.shiftKey && !$("#run").disabled) { e.preventDefault(); $("#hero-run").click(); }
 });
 
 (async () => {

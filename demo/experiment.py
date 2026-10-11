@@ -56,6 +56,7 @@ class Experiment:
         self.spec, self.variant, self.emit = spec, variant, emit
         self.run_id = datetime.now().strftime("run-%Y%m%d-%H%M%S-") + uuid4().hex[:4]
         self.stop = threading.Event()
+        self._strike = False
         self.timeline: dict[str, float] = {}
         self.label = params.get("label")
         self.parent = params.get("parent")  # run this is a re-run of (after a fix)
@@ -83,26 +84,35 @@ class Experiment:
 
     # ----------------------------------------------------------- guardrails
     def check_guardrails(self):
+        """Evaluated every second. A breach must persist for two consecutive checks before the
+        run is stopped, so a one-off host stall cannot abort an experiment."""
         window = [r for r in self.workload.window(6) if r["phase"] == "fault"]
         if len(window) < 6:
             return
+        breaches = []
         home = [r for r in window if r["endpoint"] == "home"]
         if len(home) >= 3 and sum(r["ok"] for r in home) / len(home) <= 0.2:
-            raise Aborted("guardrail: shop is down (home page failing)")
+            breaches.append("guardrail: shop is down (home page failing)")
         error_rate = 100 * sum(not r["ok"] for r in window) / len(window)
         if error_rate > self.guard["max_error_rate"]:
-            raise Aborted(f"guardrail: error rate {error_rate:.0f}% > {self.guard['max_error_rate']:.0f}%")
+            breaches.append(f"guardrail: error rate {error_rate:.0f}% > {self.guard['max_error_rate']:.0f}%")
         recent = topology.endpoint_stats([r for r in self.workload.window(10) if r["phase"] == "fault"], "fault")
         recent = {k: v for k, v in recent.items() if v["n"] >= 3}
         expected = {k for k, v in ENDPOINTS.items() if self.spec["target"] in v["services"]}
         unexpected = sorted(set(topology.impacted_endpoints(self.base_stats, recent)) - expected)
         if len(unexpected) > self.guard["max_unexpected_endpoints"]:
-            raise Aborted(f"guardrail: blast radius exceeded ({', '.join(unexpected)} degraded "
-                          "although they do not depend on the target)")
-        for ep, s in recent.items():
-            if ep not in expected and s["p95"] and s["p95"] > self.guard["max_unrelated_p95_ms"]:
-                raise Aborted(f"guardrail: {ENDPOINTS[ep]['label']} p95 {s['p95']:.0f} ms > "
-                              f"{self.guard['max_unrelated_p95_ms']:.0f} ms")
+            breaches.append(f"guardrail: blast radius exceeded ({', '.join(unexpected)} degraded "
+                            "although they do not depend on the target)")
+        for ep, st in recent.items():
+            if ep not in expected and st["p50"] and st["p50"] > self.guard["max_unrelated_p95_ms"]:
+                breaches.append(f"guardrail: {ENDPOINTS[ep]['label']} median latency {st['p50']:.0f} ms > "
+                                f"{self.guard['max_unrelated_p95_ms']:.0f} ms")
+                break
+        if breaches and self._strike:
+            raise Aborted(breaches[0])
+        if breaches:
+            self.emit("log", {"level": "warn", "message": f"Guardrail warning (stops if it persists): {breaches[0]}"})
+        self._strike = bool(breaches)
 
     def healthy_again(self, since: float) -> bool:
         rows = [r for r in self.workload.records if r["t"] >= since]
@@ -131,10 +141,22 @@ class Experiment:
         try:
             self.mark("baseline")
             self.wait(self.durations["baseline"])
-            self.base_stats = topology.endpoint_stats(self.workload.records, "baseline")
-            sick = [ENDPOINTS[k]["label"] for k, v in self.base_stats.items() if v["n"] and v["success"] < 80]
-            if sick:
-                raise Aborted(f"health gate: baseline unhealthy ({', '.join(sick)}); not injecting")
+            # Health gate: every path needs >= 3 samples at >= 80 % success. A host stall can
+            # leave a path with one slow sample, so extend the baseline (up to 30 s) before refusing.
+            extra = 0
+            while True:
+                self.base_stats = topology.endpoint_stats(self.workload.records, "baseline")
+                sick = [ENDPOINTS[k]["label"] for k, v in self.base_stats.items()
+                        if v["n"] < 3 or v["success"] < 80]
+                if not sick:
+                    break
+                if extra >= 30:
+                    raise Aborted(f"health gate: baseline unhealthy ({', '.join(sick)}); not injecting")
+                if extra == 0:
+                    self.emit("log", {"level": "info", "message": "Baseline not steady yet "
+                                      f"({', '.join(sick)}); extending the baseline..."})
+                self.wait(5)
+                extra += 5
 
             # Applying a fault (e.g. a flagd config push) briefly stalls services by itself; those
             # requests are labelled "propagation" and kept out of the fault statistics.

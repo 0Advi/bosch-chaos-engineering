@@ -5,7 +5,7 @@
   recovery       20%  time from restore to fully healthy: <=3 s = 100, >=60 s or never = 0
   error handling 15%  failures that were fast and honest (5xx < 2 s) vs timeouts or
                       misleading 4xx blaming the customer for a server fault
-  latency        10%  p95 of successful requests under fault vs baseline
+  latency        10%  median of successful requests under fault vs baseline
 """
 from __future__ import annotations
 
@@ -17,6 +17,13 @@ def _p95(values):
         return None
     ordered = sorted(values)
     return ordered[min(len(ordered) - 1, int(0.95 * len(ordered)))]
+
+
+def _p50(values):
+    if not values:
+        return None
+    ordered = sorted(values)
+    return ordered[len(ordered) // 2]
 
 
 def score(records: list[dict], blast: dict, time_to_recover_s: float | None, aborted: bool) -> dict:
@@ -52,10 +59,12 @@ def score(records: list[dict], blast: dict, time_to_recover_s: float | None, abo
 
     b95 = _p95([r["latency_ms"] for r in base if r["ok"] and r["latency_ms"]])
     f95 = _p95([r["latency_ms"] for r in fault if r["ok"] and r["latency_ms"]])
-    if not b95 or not f95:
-        latency = 100 if f95 is None and not fault else 50
+    b50 = _p50([r["latency_ms"] for r in base if r["ok"] and r["latency_ms"]])
+    f50 = _p50([r["latency_ms"] for r in fault if r["ok"] and r["latency_ms"]])
+    if not b50 or not f50:
+        latency = 100 if f50 is None and not fault else 50
     else:
-        ratio = f95 / b95
+        ratio = f50 / b50
         latency = max(0, min(100, 100 - (ratio - 1.5) * 25)) if ratio > 1.5 else 100
 
     parts = {"availability": availability, "containment": containment, "recovery": recovery,

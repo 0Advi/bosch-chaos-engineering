@@ -23,18 +23,33 @@ SOURCE_EXT = {".js", ".ts", ".go", ".py", ".rb", ".php", ".java", ".kt", ".cs", 
 SKIP_PARTS = {"node_modules", "genproto", "vendor", "tests", "test", "cypress", "obj", "bin", ".next", "__pycache__"}
 
 
-def health() -> dict:
+_HEALTH: dict = {"at": 0.0, "value": None}
+
+
+def _check_health() -> dict:
+    from concurrent.futures import ThreadPoolExecutor
     from . import faults
-    status = {}
-    for name, url in {"shop": app_url() + "/", "prometheus": metrics_url() + "/-/ready",
-                      "jaeger": jaeger_api() + "/services"}.items():
+
+    def ok(url: str) -> bool:
         try:
             with urlopen(url, timeout=4) as resp:
-                status[name] = resp.status == 200
+                return resp.status == 200
         except Exception:
-            status[name] = False
-    status["flags_baseline"] = faults.flags_clean() and not faults.active_faults()
+            return False
+    checks = {"shop": app_url() + "/", "prometheus": metrics_url() + "/-/ready", "jaeger": jaeger_api() + "/services"}
+    with ThreadPoolExecutor(4) as pool:
+        futures = {name: pool.submit(ok, url) for name, url in checks.items()}
+        clean = pool.submit(lambda: faults.flags_clean() and not faults.active_faults())
+        status = {name: f.result() for name, f in futures.items()}
+        status["flags_baseline"] = clean.result()
     return status
+
+
+def health(max_age_s: float = 5) -> dict:
+    """Cached, parallel health checks so the dashboard never waits on a slow dependency."""
+    if _HEALTH["value"] is None or time.monotonic() - _HEALTH["at"] > max_age_s:
+        _HEALTH["value"], _HEALTH["at"] = _check_health(), time.monotonic()
+    return _HEALTH["value"]
 
 
 # ------------------------------------------------------------------ metrics

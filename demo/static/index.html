@@ -4,33 +4,74 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AI Chaos Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@300;400;500&display=swap">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
 <header class="top">
   <div class="brand">
-    <div class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M13 2 4 14h7l-1 8 9-12h-7z" fill="currentColor"/></svg></div>
+    <div class="logo" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
+    </div>
     <div>
-      <h1>AI Chaos Lab</h1>
+      <h1>AI Chaos Lab<sup>™</sup></h1>
       <p class="sub">AI-driven chaos engineering · OpenTelemetry Astronomy Shop (25 services)</p>
     </div>
   </div>
   <nav class="nav">
     <a href="#plan">Plan</a><a href="#experiment">Experiment</a><a href="#live">Live</a><a href="#graph">Blast radius</a>
-    <a href="#evidence-sec">Evidence</a><a href="#findings">Findings &amp; fix</a><a href="#campaign">Report</a>
+    <a href="#evidence-sec">Evidence</a><a href="#findings">Findings</a><a href="#campaign">Report</a>
   </nav>
   <div class="chips" id="chips"></div>
-  <button class="kill" id="kill" title="Stop everything and restore all faults now">■ Kill switch</button>
+  <button class="kill" id="kill" title="Stop everything and restore all faults now (Shift+K)">Kill switch <kbd>⇧K</kbd></button>
 </header>
 
 <main>
+<div class="frame">
+<div class="grid">
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-copy">
+      <button class="cmd" id="copy-cmd" title="Copy start command"><span>make start &amp;&amp; python -m demo.server</span>
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg></button>
+      <h2 class="display">Break it<br>on purpose.<br><em>Learn why.</em><br>Fix it.</h2>
+      <p class="lede">An AI agent plans safe failure experiments on a live 25-service shop, watches every customer path, traces the blast radius and writes the code fix.</p>
+      <div class="hero-actions">
+        <button class="primary big" id="hero-plan">Plan with AI <kbd>P</kbd></button>
+        <button class="big" id="hero-run">Design experiment <kbd>R</kbd></button>
+      </div>
+      <p class="fine">Free-tier LLM · 19 fault scenarios · every fault journaled and auto-restored.</p>
+    </div>
+    <div class="hero-stats">
+      <div class="stat green">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="5" cy="12" r="2.2"/><circle cx="19" cy="5" r="2.2"/><circle cx="19" cy="19" r="2.2"/><circle cx="12" cy="12" r="2.2"/><path d="M7.2 12h2.6M14 11l3.2-4.6M14 13l3.2 4.6"/></svg>
+        <div><div class="v" id="st-services">25</div><div class="l">services in the dependency map</div></div>
+      </div>
+      <div class="stat orange">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
+        <div><div class="v" id="st-scenarios">19</div><div class="l">fault scenarios ready</div></div>
+      </div>
+      <div class="stat yellow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+        <div><div class="v" id="st-runs">–</div><div class="l">experiments recorded</div></div>
+      </div>
+      <div class="stat red" id="st-fault-cell">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4M12 17v.5"/></svg>
+        <div><div class="v" id="st-faults">–</div><div class="l">faults active right now</div></div>
+      </div>
+    </div>
+  </section>
+
   <!-- 1. AI planner -->
   <section class="card" id="plan">
     <div class="card-head">
-      <h2><span class="num">1</span> AI experiment planner</h2>
+      <h2><span class="num">01</span> AI experiment planner</h2>
       <div class="row">
-        <button class="primary" id="plan-btn">Ask AI to plan experiments</button>
-        <button id="campaign-btn" disabled>Run top 3 as campaign</button>
+        <button class="primary" id="plan-btn">Ask AI to plan experiments <kbd>P</kbd></button>
+        <button id="campaign-btn" disabled>Run top 5 as campaign</button>
       </div>
     </div>
     <p class="muted small">The planner agent reads the dependency map (25 services, live call counts), the fault catalog and past results, then ranks experiments with a reason for each. A safety validator rejects anything outside the allowed targets and limits.</p>
@@ -40,7 +81,7 @@
   <!-- 2. Design -->
   <section class="grid-setup" id="experiment">
     <div class="card">
-      <h2><span class="num">2</span> Design the experiment</h2>
+      <h2><span class="num">02</span> Design the experiment</h2>
       <label class="field">Fault scenario <select id="scenario"></select></label>
       <div class="two">
         <label class="field">Target service <select id="target"></select></label>
@@ -56,7 +97,7 @@
         <div class="two">
           <label class="field">Max unexpected paths <input id="g_unexpected" type="number" value="2" min="0" max="10"></label>
           <label class="field">Max error rate % <input id="g_error" type="number" value="85" min="10" max="100"></label>
-          <label class="field">Max p95 on unrelated paths ms <input id="g_p95" type="number" value="6000" min="500" max="8000"></label>
+          <label class="field">Max median latency, unrelated paths ms <input id="g_p95" type="number" value="6000" min="500" max="8000"></label>
           <label class="field">Hard fault cap s <input id="g_cap" type="number" value="60" min="10" max="60"></label>
         </div>
       </details>
@@ -70,7 +111,7 @@
       </ul>
     </div>
     <div class="card">
-      <h2><span class="num">3</span> Hypothesis &amp; progress</h2>
+      <h2><span class="num">03</span> Hypothesis &amp; progress</h2>
       <p class="hypothesis" id="hypothesis">–</p>
       <div class="meta" id="exp-meta"></div>
       <ol class="stepper" id="stepper">
@@ -89,7 +130,7 @@
   <!-- 3. Live -->
   <section class="card" id="live">
     <div class="card-head">
-      <h2><span class="num">4</span> Live impact on customer paths</h2>
+      <h2><span class="num">04</span> Live impact on customer paths</h2>
       <div class="legend"><span><i class="sq ok"></i>healthy</span><span><i class="sq slow"></i>slow</span><span><i class="sq bad"></i>failing</span><span><i class="band"></i>fault active</span></div>
     </div>
     <div class="kpis" id="kpis"></div>
@@ -99,10 +140,10 @@
   <!-- 4. Topology -->
   <section class="card" id="graph">
     <div class="card-head">
-      <h2><span class="num">5</span> Dependency graph &amp; blast radius</h2>
+      <h2><span class="num">05</span> Dependency graph &amp; blast radius</h2>
       <div class="legend">
         <span><i class="dot inj"></i>injected</span><span><i class="dot err"></i>errors</span><span><i class="dot deg"></i>degraded</span>
-        <span><i class="dot pot"></i>could be affected (callers)</span><span><i class="dot ok"></i>healthy</span>
+        <span><i class="dot pot"></i>could be affected</span><span><i class="dot ok"></i>healthy</span>
       </div>
     </div>
     <div class="graph-wrap">
@@ -115,7 +156,7 @@
   <section class="grid-two" id="evidence-sec">
     <div class="card">
       <div class="card-head">
-        <h2><span class="num">6</span> Evidence</h2>
+        <h2><span class="num">06</span> Evidence</h2>
         <div class="tabs" id="tabs">
           <button data-tab="trace" class="on">Traces</button><button data-tab="spans">Error spans</button>
           <button data-tab="logs">Logs</button><button data-tab="containers">Containers</button><button data-tab="paths">Paths</button>
@@ -125,7 +166,7 @@
     </div>
     <div class="card">
       <div class="card-head">
-        <h2><span class="num">7</span> AI agent activity</h2>
+        <h2><span class="num">07</span> AI agent activity</h2>
         <span class="graph-pill" id="graph-pill">planner → investigator ⇄ tools → advisor → fixer ⇄ validator → reviewer</span>
       </div>
       <div id="feed" class="feed"><p class="muted">Agent steps stream here.</p></div>
@@ -134,21 +175,28 @@
 
   <!-- 6. Findings -->
   <section class="card" id="findings">
-    <h2><span class="num">8</span> Findings, suggested fix &amp; auto-fix</h2>
+    <h2><span class="num">08</span> Findings, suggested fix &amp; auto-fix</h2>
     <div id="report"><p class="muted">The agent's grounded report and code fix appear here.</p></div>
   </section>
 
   <!-- 7. Campaign -->
   <section class="card" id="campaign">
     <div class="card-head">
-      <h2><span class="num">9</span> Resilience report</h2>
+      <h2><span class="num">09</span> Resilience report</h2>
       <a class="button" id="report-dl" href="#" download>Download findings report (.md)</a>
     </div>
-    <div id="campaign-out"><p class="muted">Run a campaign (step 1) to get a ranked, multi-experiment findings report with an overall resilience score.</p></div>
+    <div id="campaign-out"><p class="muted">Run a campaign (step 01) to get a ranked, multi-experiment findings report with an overall resilience score.</p></div>
     <h3 class="sub-h">Experiment history</h3>
     <div id="history"></div>
   </section>
+
+</div>
+</div>
 </main>
+<footer class="foot">
+  <span>AI Chaos Lab · Bosch hackathon · sandbox only, loopback ports</span>
+  <span>Shortcuts: <kbd>P</kbd> plan · <kbd>R</kbd> design · <kbd>⇧K</kbd> kill switch</span>
+</footer>
 <script src="/app.js"></script>
 </body>
 </html>
