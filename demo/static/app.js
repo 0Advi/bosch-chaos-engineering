@@ -25,6 +25,10 @@ async function loadStatus() {
     fixes ? chip(true, `${fixes} fix deployed`) : "",
     chip(!!llm.provider, llm.provider ? `${llm.provider} · ${llm.model}` : "LLM not configured")].join("");
   if (!$("#scenario").options.length) buildDesigner();
+  $("#st-scenarios").textContent = Object.keys(status.scenarios).length;
+  $("#st-runs").textContent = status.runs.length;
+  $("#st-faults").textContent = faults;
+  $("#st-fault-cell").className = `stat ${faults ? "red" : "green"}`;
   renderHistory();
   setBusy(busy);
 }
@@ -51,7 +55,7 @@ function pickScenario(id, target, variant) {
 
 function setBusy(b) {
   busy = b;
-  for (const id of ["#run", "#plan-btn", "#campaign-btn"]) $(id).disabled = b || (id === "#campaign-btn" && !plan?.experiments?.length);
+  for (const id of ["#run", "#plan-btn", "#campaign-btn", "#hero-plan", "#hero-run"]) $(id).disabled = b || (id === "#campaign-btn" && !plan?.experiments?.length);
   document.querySelectorAll("[data-needs-idle]").forEach((el) => (el.disabled = b));
   $("#run").textContent = b && status?.job === "experiment" ? "Running…" : "Run experiment";
 }
@@ -318,7 +322,7 @@ async function renderTopology() {
     else d = `M${x1},${a[1]} C${(x1 + x2) / 2},${a[1]} ${(x1 + x2) / 2},${b[1]} ${x2},${b[1]}`;
     svg += `<path d="${d}" fill="none" stroke="${hot ? "var(--bad)" : "var(--line)"}" stroke-width="${hot ? w + 1 : w}" ${e.observed ? "" : 'stroke-dasharray="3 3"'} marker-end="url(#${hot ? "arrb" : "arr"})"><title>${esc(e.from)} → ${esc(e.to)}${e.calls ? ` · ${e.calls} calls (Jaeger, last hour)` : " · static map"}</title></path>`;
   }
-  const fills = { injected: ["#8b1e3f", "#fff", "#8b1e3f"], errors: ["var(--bad)", "#fff", "var(--bad)"], degraded: ["var(--warn)", "#fff", "var(--warn)"],
+  const fills = { injected: ["var(--inj)", "#fff", "var(--inj)"], errors: ["var(--bad)", "#120806", "var(--bad)"], degraded: ["var(--warn)", "#140b04", "var(--warn)"],
     potential: ["var(--card)", "var(--ink)", "var(--warn)"], healthy: ["var(--card)", "var(--ink)", "var(--ok)"] };
   for (const n of graph.nodes) {
     const [x, y] = n.xy, st = n.platform ? "platform" : state(n.id);
@@ -538,6 +542,21 @@ document.addEventListener("click", async (e) => {
   if (t.dataset.analyse) { await openRun(t.dataset.analyse); feed = []; startJob("/api/analyse", { run_id: t.dataset.analyse }, { reset: false }); }
   if (t.dataset.autofix) { feed = []; renderFeed(); findings.comparison = null; findings.autofix = { stage: "starting" }; renderFindings(); startJob("/api/autofix", { run_id: t.dataset.autofix }); }
   if (t.dataset.rollback) { t.disabled = true; line(`Rolling back fix on ${t.dataset.rollback}…`); const r = await post("/api/rollback", { service: t.dataset.rollback }); if (r) line(`Fix rolled back: ${r.service} recreated from the original image`); await loadStatus(); renderFindings(); }
+});
+
+// Hero, copy-command and keyboard shortcuts (P plan, R open the designer, Shift+K kill switch).
+$("#hero-plan").addEventListener("click", () => { location.hash = "#plan"; $("#plan-btn").click(); });
+$("#hero-run").addEventListener("click", () => { location.hash = "#experiment"; $("#scenario").focus({ preventScroll: true }); });
+$("#copy-cmd").addEventListener("click", async () => {
+  const label = $("#copy-cmd span"), text = label.textContent;
+  try { await navigator.clipboard.writeText(text); label.textContent = "copied ✓"; } catch { label.textContent = "copy failed"; }
+  setTimeout(() => (label.textContent = text), 1400);
+});
+document.addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey || ["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement?.tagName)) return;
+  if (e.key === "K" && e.shiftKey) { e.preventDefault(); $("#kill").click(); }
+  else if (e.key.toLowerCase() === "p" && !e.shiftKey && !$("#plan-btn").disabled) { e.preventDefault(); $("#hero-plan").click(); }
+  else if (e.key.toLowerCase() === "r" && !e.shiftKey && !$("#run").disabled) { e.preventDefault(); $("#hero-run").click(); }
 });
 
 (async () => {
