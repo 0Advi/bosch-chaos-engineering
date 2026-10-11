@@ -14,7 +14,7 @@ import subprocess
 import sys
 
 from . import faults
-from .agent import validate_fix
+from .fixcheck import validate_fix
 from .catalog import HOT_PATCH
 
 ROOT = Path(__file__).resolve().parents[1]

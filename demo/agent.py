@@ -18,13 +18,10 @@ Provider (from .env): GEMINI_API_KEY (GEMINI_MODEL) or GROQ_API_KEY (GROQ_MODEL)
 """
 from __future__ import annotations
 
-import difflib
 import json
 import os
 from pathlib import Path
 import re
-import subprocess
-import tempfile
 import time
 from typing import Annotated, Callable, Literal
 
@@ -38,6 +35,7 @@ from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
 
 from . import evidence, topology
+from .fixcheck import syntax_check, validate_fix  # noqa: F401  (re-exported for autofix)
 from .catalog import CONTAINER_TARGETS, ENDPOINTS, EXCLUDED_TARGETS, HOT_PATCH, SCENARIOS
 
 UPSTREAM = evidence.UPSTREAM
@@ -492,45 +490,6 @@ def _candidate_files(run: dict, report: dict) -> list[str]:
     return list(dict.fromkeys(hot + files))[:40]
 
 
-def validate_fix(fix: dict) -> dict:
-    """Deterministic checks: file allowed, `find` unique, patched file passes a syntax check."""
-    rel = fix["file"].strip().lstrip("/").removeprefix("src/")
-    service = rel.split("/")[0]
-    try:
-        if rel not in evidence.list_source(service):
-            return {"ok": False, "error": f"{rel} is not an application source file of {service}"}
-    except PermissionError as error:
-        return {"ok": False, "error": str(error)}
-    original = (UPSTREAM / rel).read_text()
-    count = original.count(fix["find"])
-    if count != 1 or not fix["find"].strip():
-        return {"ok": False, "error": f"`find` must match the file exactly once (matched {count} times). "
-                                       "Copy complete lines verbatim from read_source output, without line numbers."}
-    patched = original.replace(fix["find"], fix["replace"], 1)
-    check = syntax_check(rel, patched)
-    if not check["ok"]:
-        return {"ok": False, "error": f"syntax check failed: {check['output']}"}
-    diff = "".join(difflib.unified_diff(original.splitlines(True), patched.splitlines(True),
-                                        f"a/src/{rel}", f"b/src/{rel}", n=3))
-    return {"ok": True, "file": rel, "diff": diff, "syntax": check, "hot_patchable": rel in HOT_PATCH,
-            "deploy": "hot-patch into running container" if rel in HOT_PATCH
-            else "compiled service: needs an image rebuild (make build) - patch saved only"}
-
-
-def syntax_check(rel: str, text: str) -> dict:
-    suffix = Path(rel).suffix
-    commands = {".js": ["node", "--check"], ".py": ["python3", "-m", "py_compile"], ".rb": ["ruby", "-c"],
-                ".go": ["gofmt", "-e", "-l"]}
-    if suffix not in commands:
-        return {"ok": True, "tool": None, "output": f"no local {suffix} compiler; not syntax-checked"}
-    with tempfile.TemporaryDirectory() as tmp:
-        path = Path(tmp) / Path(rel).name
-        path.write_text(text)
-        result = subprocess.run(commands[suffix] + [str(path)], capture_output=True, text=True, timeout=60)
-    output = (result.stdout + result.stderr).replace(str(path), rel).strip()
-    return {"ok": result.returncode == 0, "tool": " ".join(commands[suffix][:2]), "output": output[:600] or "OK"}
-
-
 def analyse(run: dict, emit: Emit) -> dict:
     llm = make_llm(emit, "analyst")
     info = provider_info()
@@ -590,7 +549,10 @@ def analyse(run: dict, emit: Emit) -> dict:
         prompt = (f"{_headline(run)}\n\nRoot cause: {report['root_cause']}\nRecommendations: "
                   + json.dumps(report["recommendations"][:3]) +
                   f"\n\nWrite ONE minimal, safe code fix in {rel} for the most important weakness, as an exact "
-                  "find/replace edit. Keep behaviour for healthy requests identical. `find` must be complete, "
+                  "find/replace edit. The fault-injection code (feature-flag checks that simulate the failure) "
+                  "is part of the experiment: never delete, comment out or bypass it. Make the code more "
+                  "resilient instead (timeouts, fail-fast, retries with idempotency, fallbacks, circuit "
+                  "breakers, correct error mapping). Keep behaviour for healthy requests identical. `find` must be complete, "
                   "contiguous lines copied verbatim from the file below (no line numbers), unique in the file. "
                   f"Set file to {rel}.\n\n=== {rel} ===\n{source}{retry}")
         fix = _structured(llm, Fix, [SystemMessage(SYSTEM), HumanMessage(prompt)])

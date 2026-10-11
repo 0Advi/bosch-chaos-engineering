@@ -4,6 +4,7 @@ Every scenario is a bounded, reversible change inside the sandbox:
   flag        flagd feature flag built into the OpenTelemetry demo services
   kill        container crash (docker kill), restored with docker start
   pause       hung / unresponsive service (docker pause), restored with unpause
+  stall       slow responses: repeated short freezes (pause/unpause cycle), restored by unpausing
   partition   network partition (docker network disconnect), restored with connect
   cpu         CPU starvation (CFS quota), restored to unlimited
   db_overload expensive parallel queries inside PostgreSQL, restored by cancelling them
@@ -45,8 +46,9 @@ SCENARIOS: dict[str, dict] = {
     "cart-failure": {
         "kind": "flag", "flag": "cartFailure", "target": "cart", "category": "Errors",
         "title": "Cart service fails requests", "variants": ["25%", "50%", "100%"], "default": "50%",
-        "hypothesis": "If cart fails, adding to cart and checkout fail but browsing, product pages and "
-                      "recommendations keep working."},
+        # Upstream fires this fault only in EmptyCart, which checkout calls after charging the card.
+        "hypothesis": "If cart fails to empty after a paid checkout, checkout reports a clear error quickly, "
+                      "no customer is charged without an order, and browsing and add-to-cart keep working."},
     "product-catalog-failure": {
         "kind": "flag", "flag": "productCatalogFailure", "target": "product-catalog", "category": "Errors",
         "title": "Product catalog fails for one product", "variants": ["on"], "default": "on",
@@ -78,9 +80,10 @@ SCENARIOS: dict[str, dict] = {
         "hypothesis": "If the ad JVM pauses for full GCs, ad latency spikes but nothing else is affected."},
     "image-slow-load": {
         "kind": "flag", "flag": "imageSlowLoad", "target": "image-provider", "category": "Slow network",
+        "stall_target": "image-provider",
         "title": "Slow product images", "variants": ["5sec", "10sec"], "default": "5sec",
-        "hypothesis": "If image delivery slows to seconds, only images are slow; APIs and checkout keep "
-                      "their normal latency."},
+        "hypothesis": "If image delivery slows to seconds, images are slow on every page (home and product "
+                      "pages) while APIs and checkout keep their normal latency."},
     "intl-shipping-slowdown": {
         "kind": "flag", "flag": "intlShippingSlowdown", "target": "shipping", "category": "Slowdown",
         "title": "International shipping slowdown", "variants": ["5sec", "10sec"], "default": "5sec",
@@ -107,6 +110,11 @@ SCENARIOS: dict[str, dict] = {
         "title": "Network partition", "variants": ["disconnect"], "default": "disconnect",
         "hypothesis": "If {target} is cut off from the network, dependent features fail fast with clear "
                       "errors and recover when connectivity returns."},
+    "slow-responses": {
+        "kind": "stall", "target": "product-catalog", "targets": CONTAINER_TARGETS, "category": "Slow network",
+        "title": "Slow responses (intermittent stalls)", "variants": ["1s", "3s"], "default": "1s",
+        "hypothesis": "If {target} intermittently stalls for seconds, callers stay within their latency "
+                      "budget or fail fast, and unrelated pages are unaffected."},
     "cpu-starvation": {
         "kind": "cpu", "target": "product-catalog", "targets": CONTAINER_TARGETS, "category": "Resource exhaustion",
         "title": "CPU starvation", "variants": ["10%", "5%"], "default": "10%",

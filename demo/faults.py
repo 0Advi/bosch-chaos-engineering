@@ -238,6 +238,38 @@ def _undo_db_overload(undo: dict) -> str:
     return "heavy queries cancelled"
 
 
+class StallCycle:
+    """Server-side slowness for every client: freeze a container for `stall_s`, let it run for
+    `run_s`, repeat. Any request arriving during a freeze waits for it, whichever page or client
+    sent it. Journaled as a pause, so a crash leaves at worst a paused container that restore_all
+    unpauses."""
+
+    def __init__(self, service: str, stall_s: float, run_s: float = 0.5):
+        if service not in CONTAINER_TARGETS:
+            raise PermissionError(f"{service} is not an allowed fault target")
+        self.service, self.stall_s, self.run_s = service, stall_s, run_s
+        self.cid = container(service)
+        self.stop = threading.Event()
+        self.thread = threading.Thread(target=self._loop, daemon=True)
+        self.undo = {"id": uuid4().hex, "kind": "pause", "service": service, "container": self.cid}
+
+    def _loop(self):
+        while not self.stop.is_set():
+            docker("pause", self.cid, check=False)
+            self.stop.wait(self.stall_s)
+            docker("unpause", self.cid, check=False)
+            self.stop.wait(self.run_s)
+
+    def start(self) -> dict:
+        _journal_add(self.undo)
+        self.thread.start()
+        return self.undo
+
+    def halt(self):
+        self.stop.set()
+        self.thread.join(timeout=self.stall_s + 5)
+
+
 class TrafficSpike:
     """Concurrent synthetic users hammering browse paths until stopped."""
 
@@ -283,6 +315,7 @@ class Injection:
         self.spec, self.scenario, self.target, self.variant = spec, scenario, target, variant
         self.undos: list[dict] = []
         self.spike: TrafficSpike | None = None
+        self.stall: StallCycle | None = None
         self.description = ""
 
     def apply(self):
@@ -290,6 +323,18 @@ class Injection:
         if kind == "flag":
             self.undos.append(_apply_flag(self.spec["flag"], self.variant))
             self.description = f"flagd: {self.spec['flag']} = {self.variant}"
+            if self.spec.get("stall_target"):
+                # The upstream flag only slows clients that send Envoy's delay header (the home-page
+                # product cards); also slow the service itself so every page and client sees it.
+                seconds = float(self.variant.rstrip("sec"))
+                self.stall = StallCycle(self.spec["stall_target"], max(0.5, seconds - 0.5))
+                self.undos.append(self.stall.start())
+                self.description += f" + {self.spec['stall_target']} server-side stalls ({self.variant})"
+        elif kind == "stall":
+            seconds = float(self.variant.rstrip("s"))
+            self.stall = StallCycle(self.target, seconds)
+            self.undos.append(self.stall.start())
+            self.description = f"{self.target} responds slowly (stalls up to {self.variant})"
         elif kind in ("kill", "pause", "partition", "cpu"):
             self.undos.append(_container_fault(kind, self.target, self.variant))
             verb = {"kill": "docker kill", "pause": "docker pause", "partition": "network disconnect",
@@ -310,6 +355,9 @@ class Injection:
 
     def restore(self) -> list[str]:
         results = []
+        if self.stall:
+            self.stall.halt()
+            results.append(f"{self.stall.service} stall cycle stopped")
         if self.spike:
             self.spike.halt()
             results.append(f"traffic stopped after {self.spike.sent} requests")
