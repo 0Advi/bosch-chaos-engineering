@@ -49,7 +49,8 @@ def render(tmp: Path, seg: dict, out: Path):
               f"{cap}[v]")
     else:  # side by side: dashboard | shop
         args = ["-ss", f"{seg['start']:.2f}", "-t", f"{seg['dur']:.2f}", "-i", seg["src"],
-                "-ss", f"{max(0, seg['start'] - SHOP_LAG):.2f}", "-t", f"{seg['dur']:.2f}", "-i", seg["src2"]]
+                "-ss", f"{max(0, seg.get('start2', seg['start'] - SHOP_LAG)):.2f}", "-t", f"{seg['dur']:.2f}",
+                "-i", seg["src2"]]
         labels = ""
         for i, label in enumerate(("AI CHAOS LAB  (live impact)", "REAL SHOP  (customer view)")):
             (tmp / f"{seg['name']}.l{i}.txt").write_text(label)

@@ -15,6 +15,8 @@
   POST /api/autofix             deploy a run's validated fix, re-run the experiment, compare
   POST /api/rollback            remove a deployed fix
   POST /api/abort               kill switch: stop and restore every active fault now
+  POST /api/end-fault           end the current fault early (restored; the run still completes)
+  GET  /api/shop-view           where and how a scenario shows in the shop tab
 
 Usage: python -m demo.server [--port 8099]
 """
@@ -30,8 +32,10 @@ import time
 import traceback
 from urllib.parse import parse_qs
 
+from controller.observer.endpoints import app_url
+
 from . import agent, autofix, evidence, faults, report, topology
-from .catalog import CONTAINER_TARGETS, ENDPOINTS, EXCLUDED_TARGETS, SCENARIOS
+from .catalog import CONTAINER_TARGETS, ENDPOINTS, EXCLUDED_TARGETS, SCENARIOS, shop_view
 from .experiment import RUNS_DIR, Experiment, install_restore_handlers, wait_until_healthy
 
 STATIC = Path(__file__).resolve().parent / "static"
@@ -270,12 +274,17 @@ class Handler(BaseHTTPRequestHandler):
                     "health": evidence.health(), "llm": agent.provider_info(), "busy": S.busy, "job": S.job,
                     "scenarios": SCENARIOS, "endpoints": ENDPOINTS, "targets": CONTAINER_TARGETS,
                     "excluded": EXCLUDED_TARGETS, "runs": saved_runs(), "campaigns": saved_campaigns(),
-                    "active_faults": faults.active_faults(), "active_fixes": autofix.active()})
+                    "active_faults": faults.active_faults(), "active_fixes": autofix.active(),
+                    "shop_url": app_url().replace("127.0.0.1", "localhost")})
             if path == "/api/topology":
                 graph = topology.graph()
                 run = _load(f"{q['run']}.json") if q.get("run", "").startswith("run-") else None
                 graph["blast"] = (run or {}).get("blast_radius")
                 return self._json(200, graph)
+            if path == "/api/shop-view":
+                if q.get("scenario") not in SCENARIOS:
+                    return self._json(404, {"error": "unknown scenario"})
+                return self._json(200, shop_view(q["scenario"], q.get("target") or None))
             if path == "/api/plan":
                 return self._json(200, _load(PLAN_FILE.name) or {})
             if path.startswith("/api/runs/"):
@@ -301,17 +310,33 @@ class Handler(BaseHTTPRequestHandler):
         self._json(404, {"error": "not found"})
 
     def do_POST(self):
-        if self.headers.get("Origin") not in (None, f"http://{self.headers.get('Host')}"):
+        host = self.headers.get("Host", "")
+        port = self.server.server_address[1]
+        if host not in (f"127.0.0.1:{port}", f"localhost:{port}"):   # blocks DNS-rebinding pages
+            return self._json(403, {"error": "unexpected Host header"})
+        if self.headers.get("Origin") not in (None, f"http://{host}"):
             return self._json(403, {"error": "cross-origin request refused"})
         body = self._body()
+        if self.path == "/api/end-fault":
+            if S.experiment:
+                S.experiment.end_fault.set()
+                return self._json(200, {"ok": True})
+            return self._json(409, {"error": "no experiment is running"})
         if self.path == "/api/abort":
             S.stop.set()
             if S.experiment:
                 S.experiment.stop.set()
+                # Let the experiment run its own restore first (it owns any live stall/traffic
+                # loops), then sweep whatever is still journaled.
+                deadline = time.monotonic() + 20
+                while S.experiment and time.monotonic() < deadline:
+                    time.sleep(0.25)
             results = faults.restore_all()
             return self._json(200, {"restored": results, "flags_clean": faults.flags_clean(),
                                     "active_faults": faults.active_faults()})
         if self.path == "/api/rollback":
+            if S.busy or faults.active_faults():
+                return self._json(409, {"error": "finish or abort the running experiment before rolling back"})
             try:
                 return self._json(200, autofix.rollback(body["service"]))
             except Exception as error:
@@ -357,6 +382,14 @@ def main():
     parser.add_argument("--port", type=int, default=8099)
     args = parser.parse_args()
     load_env()
+    # One dashboard per sandbox: a second instance would "restore" the first one's live fault.
+    import fcntl
+    RUNS_DIR.mkdir(parents=True, exist_ok=True)
+    lock = open(RUNS_DIR / ".server.lock", "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        raise SystemExit("Another AI Chaos Lab dashboard is already running for this sandbox.")
     leftover = faults.restore_all()
     if leftover:
         print(f"Restored faults left by a previous session: {leftover}")

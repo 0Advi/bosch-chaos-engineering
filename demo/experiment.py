@@ -56,6 +56,7 @@ class Experiment:
         self.spec, self.variant, self.emit = spec, variant, emit
         self.run_id = datetime.now().strftime("run-%Y%m%d-%H%M%S-") + uuid4().hex[:4]
         self.stop = threading.Event()
+        self.end_fault = threading.Event()   # presenter's "End fault now": restore, run counts as completed
         self._strike = False
         self.timeline: dict[str, float] = {}
         self.label = params.get("label")
@@ -68,11 +69,14 @@ class Experiment:
         self.timeline[name] = self.workload.t()
         self.emit("phase", {"name": name, "t": self.timeline[name], **extra})
 
-    def wait(self, seconds: float, check: Callable[[], None] | None = None):
+    def wait(self, seconds: float, check: Callable[[], None] | None = None, endable: bool = False):
         end = time.monotonic() + seconds
         while time.monotonic() < end:
             if self.stop.is_set():
                 raise Aborted("operator abort (kill switch)")
+            if endable and self.end_fault.is_set():
+                self.emit("log", {"level": "info", "message": "Fault ended early by the presenter"})
+                return
             if check:
                 check()
             time.sleep(1)
@@ -114,15 +118,19 @@ class Experiment:
             self.emit("log", {"level": "warn", "message": f"Guardrail warning (stops if it persists): {breaches[0]}"})
         self._strike = bool(breaches)
 
-    def healthy_again(self, since: float) -> bool:
+    def recovery_progress(self, since: float) -> tuple[int, int]:
+        """(paths healthy again, paths that were healthy in the baseline) since the restore."""
         rows = [r for r in self.workload.records if r["t"] >= since]
-        for ep, base in self.base_stats.items():
-            if not base["n"] or base["success"] < 90:
-                continue
+        wanted = [ep for ep, base in self.base_stats.items() if base["n"] and base["success"] >= 90]
+        healthy = 0
+        for ep in wanted:
             mine = [r for r in rows if r["endpoint"] == ep]
-            if not mine or not mine[-1]["ok"]:
-                return False
-        return True
+            healthy += bool(mine and mine[-1]["ok"])
+        return healthy, len(wanted)
+
+    def healthy_again(self, since: float) -> bool:
+        healthy, wanted = self.recovery_progress(since)
+        return healthy == wanted
 
     # ------------------------------------------------------------------ run
     def run(self) -> dict:
@@ -167,7 +175,7 @@ class Experiment:
             self.wait(PROPAGATION_S)
             self.workload.phase = "fault"
             self.mark("fault")
-            self.wait(self.durations["fault"], self.check_guardrails)
+            self.wait(self.durations["fault"], self.check_guardrails, endable=True)
         except Aborted as error:
             outcome, reason = "aborted", str(error)
             self.emit("log", {"level": "warn", "message": str(error)})
@@ -184,11 +192,17 @@ class Experiment:
         if applied:
             restored_at = self.timeline["restore"]
             deadline = time.monotonic() + RECOVERY_LIMIT_S
+            last_note = 0.0
             while time.monotonic() < deadline and not self.stop.is_set():
                 time.sleep(0.5)
                 if self.healthy_again(restored_at):
                     ttr = round(self.workload.t() - restored_at, 2)
                     break
+                if time.monotonic() - last_note > 3:   # clients may need a while to reconnect
+                    last_note = time.monotonic()
+                    healthy, wanted = self.recovery_progress(restored_at)
+                    self.emit("log", {"level": "info", "message": f"Fault removed; waiting for the shop to "
+                                      f"heal ({healthy}/{wanted} customer paths healthy again)"})
             self.mark("recovered" if ttr is not None else "not_recovered", ttr=ttr)
             self.workload.phase = "recovery"
             try:

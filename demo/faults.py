@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 import threading
 import time
 from uuid import uuid4
@@ -24,22 +25,36 @@ JOURNAL = ROOT / "artifacts" / "demo-runs" / ".active-faults.json"
 PROJECT = "bosch-chaos-sandbox"
 NETWORK = "bosch-chaos-sandbox"
 _lock = threading.Lock()
+_LIVE: set = set()          # running StallCycle / TrafficSpike loops; restore_all halts them first
 
 
 # ------------------------------------------------------------------ journal
 def _journal_read() -> list[dict]:
     try:
-        return json.loads(JOURNAL.read_text())
-    except (OSError, ValueError):
+        text = JOURNAL.read_text()
+    except OSError:
+        return []
+    try:
+        return json.loads(text)
+    except ValueError:
+        # Never silently drop pending undos: keep the bad file for inspection and report it.
+        JOURNAL.replace(JOURNAL.with_suffix(".corrupt"))
+        print(f"WARNING: fault journal was corrupt; moved to {JOURNAL.with_suffix('.corrupt')}", flush=True)
         return []
 
 
 def _journal_write(entries: list[dict]):
+    """Atomic: write a temp file in the same directory, then rename over the journal."""
     JOURNAL.parent.mkdir(parents=True, exist_ok=True)
-    if entries:
-        JOURNAL.write_text(json.dumps(entries, indent=1))
-    else:
+    if not entries:
         JOURNAL.unlink(missing_ok=True)
+        return
+    fd, tmp = tempfile.mkstemp(dir=JOURNAL.parent, prefix=".journal-", suffix=".json")
+    with os.fdopen(fd, "w") as handle:
+        handle.write(json.dumps(entries, indent=1))
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(tmp, JOURNAL)
 
 
 def _journal_add(entry: dict):
@@ -181,6 +196,7 @@ def _container_fault(kind: str, service: str, variant: str) -> dict:
     elif kind == "partition":
         info = json.loads(docker("inspect", cid))[0]["NetworkSettings"]["Networks"][NETWORK]
         undo["aliases"] = [a for a in (info.get("Aliases") or []) if a] or [service]
+        undo["ip"] = info.get("IPAddress")
         _journal_add(undo)
         docker("network", "disconnect", NETWORK, cid)
     elif kind == "cpu":
@@ -196,6 +212,16 @@ def _container_fault(kind: str, service: str, variant: str) -> dict:
 
 
 def _undo_container(undo: dict) -> str:
+    try:
+        return _undo_container_inner(undo)
+    except RuntimeError as error:
+        if "No such container" in str(error):
+            # The container was recreated (e.g. compose up): the new one carries none of this fault.
+            return f"{undo['service']} was replaced; {undo['kind']} no longer applies"
+        raise
+
+
+def _undo_container_inner(undo: dict) -> str:
     cid = undo["container"]
     if undo["kind"] == "kill":
         docker("start", cid, timeout=60)
@@ -209,6 +235,10 @@ def _undo_container(undo: dict) -> str:
             for alias in undo["aliases"]:
                 args += ["--alias", alias]
             docker(*args, NETWORK, cid)
+            ip = (json.loads(docker("inspect", cid))[0]["NetworkSettings"]["Networks"].get(NETWORK) or {}).get("IPAddress")
+            if undo.get("ip") and ip != undo["ip"]:
+                return (f"{undo['service']} reconnected with a NEW IP ({undo['ip']} -> {ip}); "
+                        "callers may need a few seconds to reconnect")
     elif undo["kind"] == "cpu":
         quota = undo["prior_quota"] if undo["prior_quota"] > 0 else -1
         docker("update", "--cpu-period", str(undo["prior_period"]), "--cpu-quota", str(quota), cid)
@@ -218,7 +248,20 @@ def _undo_container(undo: dict) -> str:
 DB_MARK = "chaos_demo_overload"
 
 
+def _psql(cid: str, sql: str) -> str:
+    return docker("exec", cid, "psql", "-U", "postgres", "-tAc", sql)
+
+
+def _heavy_count(cid: str) -> int:
+    out = _psql(cid, f"SELECT count(*) FROM pg_stat_activity WHERE query LIKE '%{DB_MARK}%' "
+                     "AND pid <> pg_backend_pid()")
+    return int(out.strip() or 0)
+
+
 def _apply_db_overload(variant: str) -> dict:
+    """Saturate astronomy-db: cap it to one CPU (journaled, so it is restored) and run N CPU-bound
+    loops in it, so the shop's catalog queries compete for that CPU. Each loop also has a
+    statement timeout, so it ends on its own even if every restore path failed."""
     cid = container("astronomy-db")
     count = int(variant.split()[0])
     undo = {"id": uuid4().hex, "kind": "db_overload", "service": "astronomy-db", "container": cid}
@@ -227,15 +270,53 @@ def _apply_db_overload(variant: str) -> dict:
     query = (f"/* {DB_MARK} */ DO $$ DECLARE x float8 := 0; BEGIN "
              "FOR i IN 1..2000000000 LOOP x := x + sqrt(i); END LOOP; END $$;")
     for _ in range(count):
-        docker("exec", "-d", cid, "psql", "-U", "postgres", "-c", query)
+        docker("exec", "-d", cid, "psql", "-U", "postgres", "-c", "SET statement_timeout = '90s'", "-c", query)
+    deadline = time.monotonic() + 8
+    while _heavy_count(cid) < count and time.monotonic() < deadline:
+        time.sleep(0.5)
+    if _heavy_count(cid) < count:
+        raise RuntimeError(f"only {_heavy_count(cid)} of {count} heavy queries started")
     return undo
 
 
 def _undo_db_overload(undo: dict) -> str:
-    docker("exec", undo["container"], "psql", "-U", "postgres", "-tAc",
-           f"SELECT count(pg_cancel_backend(pid)) FROM pg_stat_activity "
-           f"WHERE query LIKE '%{DB_MARK}%' AND pid <> pg_backend_pid()")
-    return "heavy queries cancelled"
+    """Cancel, then terminate, until no heavy query is left (verified)."""
+    cid = undo["container"]
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        if _heavy_count(cid) == 0:
+            return "heavy queries stopped (verified)"
+        _psql(cid, f"SELECT pg_cancel_backend(pid) FROM pg_stat_activity WHERE query LIKE '%{DB_MARK}%' "
+                   "AND pid <> pg_backend_pid()")
+        time.sleep(1)
+        _psql(cid, f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE query LIKE '%{DB_MARK}%' "
+                   "AND pid <> pg_backend_pid()")
+        time.sleep(0.5)
+    raise RuntimeError("heavy queries still running")
+
+
+LOCK_SQL = "FROM pg_stat_activity WHERE query LIKE 'LOCK TABLE catalog.products%' AND pid <> pg_backend_pid()"
+
+
+def _release_catalog_lock() -> str:
+    """product-catalog's lock-contention fault holds ACCESS EXCLUSIVE for a fixed 30 s even after the
+    flag is off: end that transaction now. Then watch one full ticker period (10 s): a product-catalog
+    whose flag client kept a stale 'on' value (seen after it was restarted) re-locks every 10 s, so
+    restart it to force a fresh flag read, and verify the lock stays gone."""
+    try:
+        db = container("astronomy-db")
+        released = int(_psql(db, f"SELECT count(pg_terminate_backend(pid)) {LOCK_SQL}").strip() or 0)
+        deadline = time.monotonic() + 12
+        while time.monotonic() < deadline:
+            time.sleep(2)
+            if int(_psql(db, f"SELECT count(*) {LOCK_SQL}").strip() or 0):
+                docker("restart", container("product-catalog"), timeout=90)
+                _psql(db, f"SELECT count(pg_terminate_backend(pid)) {LOCK_SQL}")
+                return (f"released {released + 1} catalog table lock(s); product-catalog kept re-locking "
+                        "(stale flag value) and was restarted")
+        return f"released {released} catalog table lock(s); verified no re-lock for 12 s"
+    except Exception as error:
+        return f"could not release catalog lock: {error}"
 
 
 class StallCycle:
@@ -262,12 +343,15 @@ class StallCycle:
 
     def start(self) -> dict:
         _journal_add(self.undo)
+        _LIVE.add(self)
         self.thread.start()
         return self.undo
 
     def halt(self):
         self.stop.set()
         self.thread.join(timeout=self.stall_s + 5)
+        _LIVE.discard(self)
+        docker("unpause", self.cid, check=False)   # never leave it frozen, even if the loop raced
 
 
 class TrafficSpike:
@@ -292,6 +376,7 @@ class TrafficSpike:
             i += 1
 
     def start(self):
+        _LIVE.add(self)
         self.threads = [threading.Thread(target=self._loop, daemon=True) for _ in range(self.users)]
         for t in self.threads:
             t.start()
@@ -300,6 +385,7 @@ class TrafficSpike:
         self.stop.set()
         for t in self.threads:
             t.join(timeout=12)
+        _LIVE.discard(self)
 
 
 # ------------------------------------------------------------------ facade
@@ -319,6 +405,22 @@ class Injection:
         self.description = ""
 
     def apply(self):
+        """Apply the fault. If anything fails half-way, undo every journal entry this apply created
+        before re-raising, so a failed injection can never leave a partial fault behind."""
+        before = {e["id"] for e in _journal_read()}
+        try:
+            self._apply()
+        except BaseException:
+            for loop in (self.stall, self.spike):
+                if loop:
+                    loop.halt()
+            for entry in reversed([e for e in _journal_read() if e["id"] not in before]):
+                undo_entry(entry)
+            self.undos = []
+            raise
+        self.owned = {e["id"] for e in _journal_read()} - before
+
+    def _apply(self):
         kind = self.spec["kind"]
         if kind == "flag":
             self.undos.append(_apply_flag(self.spec["flag"], self.variant))
@@ -341,8 +443,9 @@ class Injection:
                     "cpu": f"CPU quota {self.variant}"}[kind]
             self.description = f"{verb} {self.target}"
         elif kind == "db_overload":
+            self.undos.append(_container_fault("cpu", "astronomy-db", "100%"))   # 1 CPU: queries must compete
             self.undos.append(_apply_db_overload(self.variant))
-            self.description = f"{self.variant} heavy SQL on astronomy-db"
+            self.description = f"{self.variant} heavy SQL on astronomy-db (capped to 1 CPU)"
         elif kind in ("traffic", "combined"):
             if kind == "combined":
                 self.undos.append(_container_fault("kill", self.target, "kill"))
@@ -363,7 +466,18 @@ class Injection:
             results.append(f"traffic stopped after {self.spike.sent} requests")
         for undo in reversed(self.undos):
             results.append(undo_entry(undo))
+        # Belt and braces: anything this injection journaled that is somehow still recorded.
+        for entry in reversed([e for e in _journal_read() if e["id"] in getattr(self, "owned", set())]):
+            results.append(undo_entry(entry))
         self.undos = []
+        if self.spec.get("post_restore") == "release_table_lock":
+            results.append(_release_catalog_lock())
+        elif self.spec.get("post_restore") == "restart_checkout":
+            try:
+                docker("restart", container("checkout"), timeout=90)
+                results.append("checkout restarted (drops the connections leaked while payment was unreachable)")
+            except Exception as error:
+                results.append(f"could not restart checkout: {error}")
         return results
 
 
@@ -382,7 +496,11 @@ def undo_entry(undo: dict) -> str:
 
 
 def restore_all() -> list[str]:
-    return [undo_entry(e) for e in reversed(_journal_read())]
+    results = []
+    for loop in list(_LIVE):            # stop re-pausing / traffic before undoing the journal
+        loop.halt()
+        results.append(f"stopped {type(loop).__name__}")
+    return results + [undo_entry(e) for e in reversed(_journal_read())]
 
 
 def flags_clean() -> bool:

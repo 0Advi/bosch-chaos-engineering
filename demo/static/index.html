@@ -101,8 +101,11 @@
           <label class="field">Hard fault cap s <input id="g_cap" type="number" value="60" min="10" max="60"></label>
         </div>
       </details>
+      <label class="presenter"><input type="checkbox" id="presenter"> <span><b>Presenter mode</b>: visible intensity,
+        60 s fault, and the shop tab you open from "See it in the shop" reloads on the affected page the moment the fault goes live</span></label>
       <div class="actions">
         <button class="primary" id="run">Run experiment</button>
+        <button id="end-fault" disabled title="Restore now; the run still completes and is scored">End fault now</button>
       </div>
       <ul class="guards">
         <li>Health gate: no injection unless the baseline is healthy</li>
@@ -114,6 +117,7 @@
       <h2><span class="num">03</span> Hypothesis &amp; progress</h2>
       <p class="hypothesis" id="hypothesis">–</p>
       <div class="meta" id="exp-meta"></div>
+      <div class="shopview" id="shopview"></div>
       <ol class="stepper" id="stepper">
         <li data-step="baseline"><b>Baseline</b><span>steady state</span></li>
         <li data-step="inject"><b>Inject</b><span>apply fault</span></li>

@@ -95,7 +95,8 @@ def endpoint_stats(records: list[dict], phase: str) -> dict:
 
 def impacted_endpoints(base: dict, fault: dict) -> dict[str, list[str]]:
     """Endpoints whose success dropped >=10 points, or whose *median* latency more than doubled
-    (+250 ms). The median ignores short host-wide stalls that hit every path at once."""
+    (+500 ms). The median ignores short host-wide stalls that hit every path at once, and
+    the 500 ms floor keeps a busy laptop's jitter from counting as blast radius."""
     impacted = {}
     for endpoint, f in fault.items():
         b = base.get(endpoint) or {}
@@ -104,7 +105,7 @@ def impacted_endpoints(base: dict, fault: dict) -> dict[str, list[str]]:
         reasons = []
         if b["success"] - f["success"] >= 10 and f["n"] - f["ok"] >= 2:
             reasons.append(f"success {b['success']}% -> {f['success']}%")
-        if f["p50"] and b.get("p50") and f["p50"] > 2 * b["p50"] + 250:
+        if f["p50"] and b.get("p50") and f["p50"] > 2 * b["p50"] + 500:
             reasons.append(f"median {b['p50']} -> {f['p50']} ms (p95 {b.get('p95')} -> {f['p95']} ms)")
         if reasons:
             impacted[endpoint] = reasons

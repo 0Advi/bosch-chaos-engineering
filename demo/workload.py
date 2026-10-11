@@ -124,6 +124,15 @@ class Workload:
         result["latency_ms"] = round((time.monotonic() - started) * 1000, 1)
         return result
 
+    def _checkout_intl(self, session: str) -> dict:
+        from controller.observer.http import FAKE_CARD, SYNTHETIC_EMAIL
+        result = self.shop.call("/api/checkout?currencyCode=USD", {
+            "userId": session, "email": SYNTHETIC_EMAIL, "userCurrency": "USD",
+            "address": INTL_ADDRESS, "creditCard": FAKE_CARD})
+        body = result.pop("body") or {}
+        result.update(order_id=body.get("orderId"), error=body.get("error"), error_code=body.get("code"))
+        return result
+
     def _probe(self, endpoint: str, call):
         i = 0
         while not self.stop.is_set():
@@ -150,7 +159,9 @@ class Workload:
             self._record("cart_get", cart, started, ok=cart["http_status"] == 200 and bool(cart.get("items")))
             if added["http_status"] == 200 and not self.stop.is_set():
                 started = (self.t(), self.phase)
-                order = shop.checkout(session, "USD")
+                # Alternate domestic and international orders: upstream slows shipping only for
+                # non-US addresses, so an all-US buyer could never see that fault.
+                order = shop.checkout(session, "USD") if self.journeys % 2 == 0 else self._checkout_intl(session)
                 self._record("checkout", order, started,
                              ok=order["http_status"] == 200 and bool(order.get("order_id")),
                              error_code=order.get("error_code"))

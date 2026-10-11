@@ -41,6 +41,42 @@ function buildDesigner() {
   pickScenario("payment-failure");
 }
 
+let shopView = null, shopWin = null;
+const shopUrl = () => (status && status.shop_url) || "http://localhost:8081";
+
+async function loadShopView() {
+  const sid = $("#scenario").value, target = $("#target").value;
+  shopView = await (await fetch(`/api/shop-view?scenario=${encodeURIComponent(sid)}&target=${encodeURIComponent(target)}`)).json();
+  if ($("#presenter").checked) applyPresenterDefaults();
+  renderShopView();
+}
+
+function renderShopView() {
+  const v = shopView;
+  if (!v || !v.path) { $("#shopview").innerHTML = ""; return; }
+  const label = { high: "clearly visible", medium: "visible if you look", low: "subtle", none: "not visible to customers" }[v.visibility];
+  $("#shopview").innerHTML = `<div class="sv-head"><span class="sv-title">See it in the shop</span>
+      <span class="vis ${esc(v.visibility)}">${esc(label)}</span>
+      <button id="open-shop" title="Opens (or reuses) a shop tab">Open shop at ${esc(v.path)} ↗</button></div>
+    <ol>${v.steps.map((x) => `<li>${esc(x)}</li>`).join("")}<li>${$("#presenter").checked
+      ? "Presenter mode reloads the shop tab you opened with the button above when FAULT LIVE starts"
+      : "Reload the shop tab once FAULT LIVE shows (pages already loaded keep their old data)"}</li></ol>
+    <div class="sv-expect"><b>You should see:</b> ${esc(v.expect)}</div>`;
+  $("#open-shop").onclick = () => openShop();
+}
+
+function openShop() {
+  if (!shopView) return;
+  shopWin = window.open(shopUrl() + shopView.path, "chaos-shop");
+}
+
+function applyPresenterDefaults() {
+  const p = (shopView && shopView.presenter) || {};
+  if (p.variant && [...$("#variant").options].some((o) => o.value === p.variant)) $("#variant").value = p.variant;
+  $("#fault_s").value = Math.min(60, p.fault_s || 60);
+  $("#baseline_s").value = 6;
+}
+
 function pickScenario(id, target, variant) {
   const s = status.scenarios[id];
   $("#scenario").value = id;
@@ -51,6 +87,7 @@ function pickScenario(id, target, variant) {
   $("#variant").innerHTML = s.variants.map((v) => `<option>${esc(v)}</option>`).join("");
   $("#variant").value = variant && s.variants.includes(variant) ? variant : s.default;
   if (!live.run) $("#hypothesis").textContent = s.hypothesis.replaceAll("{target}", $("#target").value);
+  loadShopView();
 }
 
 function setBusy(b) {
@@ -91,12 +128,16 @@ setInterval(async () => {
     } catch { line("Lab server is not reachable. Start it with: python -m demo.server", "error"); }
     return;
   }
-  if (!phaseClock || !live.run) return;
+  if (!phaseClock || !live.run) { document.title = "AI Chaos Lab"; return; }
   const secs = Math.round((Date.now() - phaseClock.at) / 1000);
+  const left = Math.max(0, (live.run.durations?.fault || 0) - secs);
+  document.title = phaseClock.name === "fault" ? `● FAULT LIVE ${left}s · AI Chaos Lab`
+    : phaseClock.name === "baseline" ? "Baseline… · AI Chaos Lab"
+    : ["restore", "recovered"].includes(phaseClock.name) ? "Restored · AI Chaos Lab" : "AI Chaos Lab";
   const planned = { baseline: live.run.durations?.baseline, fault: live.run.durations?.fault, recovered: live.run.durations?.recovery }[phaseClock.name];
   const n = live.records.length;
   const extra = phaseClock.name === "evidence" ? " (waiting for traces and metrics to flush, up to ~40 s)" : "";
-  $("#runline").innerHTML = `<b>${esc(PHASE_LABEL[phaseClock.name] || phaseClock.name)}</b> · ${secs}s${planned ? ` of ${planned}s` : ""} · ${n} requests observed${extra}${phaseClock.note ? ` · ${esc(phaseClock.note)}` : ""}`;
+  $("#runline").innerHTML = `${phaseClock.name === "fault" ? `<span class="live-banner">FAULT LIVE · ${left}s left</span>` : ""}<b>${esc(PHASE_LABEL[phaseClock.name] || phaseClock.name)}</b> · ${secs}s${planned ? ` of ${planned}s` : ""} · ${n} requests observed${extra}${phaseClock.note ? ` · ${esc(phaseClock.note)}` : ""}`;
 }, 1000);
 
 let renderPending = false;
@@ -113,6 +154,10 @@ function handle(ev) {
     case "phase":
       live.timeline[d.name] = d.t;
       phaseClock = { name: d.name, at: Date.now(), note: d.description || (d.results || []).join("; ") || (d.ttr != null ? `recovered in ${d.ttr}s` : "") };
+      $("#end-fault").disabled = !["inject", "fault"].includes(d.name);
+      if (d.name === "fault" && $("#presenter").checked && shopWin && !shopWin.closed && shopView) {
+        shopWin.location.href = shopUrl() + shopView.path;   // fresh load: the fault is live now
+      }
       if (d.name === "inject") line(`Fault injected: ${d.description}`);
       else if (d.name === "restore") line(`Fault removed: ${(d.results || []).join("; ")}`);
       else if (d.name === "recovered") line(`All healthy paths recovered ${d.ttr}s after restore`);
@@ -141,7 +186,7 @@ function handle(ev) {
       if (findings) { findings.autofix = d; renderFindings(); }
       line(d.stage === "deployed" ? `Fix deployed to ${d.service}: ${d.message}` : `Deploying fix to ${d.file}…`); break;
     case "comparison": if (findings) { findings.comparison = d; renderFindings(); } loadStatus(); break;
-    case "done": phaseClock = null; setBusy(false); loadStatus(); renderStepper();
+    case "done": phaseClock = null; document.title = "AI Chaos Lab"; $("#end-fault").disabled = true; setBusy(false); loadStatus(); renderStepper();
       if (live.record) line(live.record.status === "completed" ? `Finished: ${live.record.title} on ${live.record.target}. Score ${live.record.resilience?.score ?? "–"}/100.` : `Stopped safely: ${live.record.abort_reason}`, live.record.status === "completed" ? "" : "warn");
       break;
   }
@@ -191,10 +236,11 @@ async function post(url, body) {
 }
 
 async function startJob(url, body, opts = {}) {
+  setBusy(true);                                  // disable at once: no double submits
   if (opts.reset !== false) { live = freshLive(); feed = []; renderFeed(); renderLive(); }
   connect();
   const ok = await post(url, body);
-  if (ok) { setBusy(true); status.job = ok.job; setBusy(true); }
+  if (ok) { status.job = ok.job; setBusy(true); } else { setBusy(false); }
 }
 
 // ===================================================================== live
@@ -518,9 +564,15 @@ async function openRun(id) {
 
 // ================================================================= actions
 $("#scenario").addEventListener("change", (e) => pickScenario(e.target.value));
+$("#target").addEventListener("change", () => loadShopView());
+$("#variant").addEventListener("change", () => {});
+$("#presenter").addEventListener("change", () => { if ($("#presenter").checked) applyPresenterDefaults(); renderShopView(); });
+$("#end-fault").addEventListener("click", async () => { $("#end-fault").disabled = true; await post("/api/end-fault", {}); });
 $("#target").addEventListener("change", () => { if (!live.run) $("#hypothesis").textContent = status.scenarios[$("#scenario").value].hypothesis.replaceAll("{target}", $("#target").value); });
 $("#tabs").addEventListener("click", (e) => { if (e.target.dataset.tab) { evTab = e.target.dataset.tab; renderEvidence(); } });
-$("#run").addEventListener("click", () => startJob("/api/run", designerParams()));
+$("#run").addEventListener("click", () => {
+  startJob("/api/run", designerParams());
+});
 $("#plan-btn").addEventListener("click", () => { feed = []; renderFeed(); $("#plan-out").innerHTML = `<p class="muted">Planner agent is reading the dependency map…</p>`; startJob("/api/plan", {}, { reset: false }); });
 $("#campaign-btn").addEventListener("click", () => {
   const exps = plan.experiments.slice(0, 5).map((e) => ({ scenario: e.scenario, target: e.target, variant: e.variant, fault_s: Math.min(e.fault_s, 25), title: e.title }));
