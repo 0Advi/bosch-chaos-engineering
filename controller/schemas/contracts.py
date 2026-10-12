@@ -33,6 +33,7 @@ class Family(str, Enum):
     DUPLICATE_PAYMENT = "duplicate_payment"
 
 
+# How a capability is executed.
 class AdapterKind(str, Enum):
     FLAG = "flag"                                  # sandbox-owned flagd file
     CHECKOUT_REQUEST = "checkout_request_fixture"  # HTTP via frontend-proxy
@@ -40,11 +41,13 @@ class AdapterKind(str, Enum):
     CONTAINER_STOP = "container_stop"              # stop/start one container
 
 
+# Whether a capability may run at all, and how.
 class Execution(str, Enum):
     DISABLED = "disabled"  # contract only; adapter not trusted yet
     PREVIEW = "preview"    # dry-run actions; live only if policy lists it
 
 
+# One tunable parameter of a capability, with type, default and bounds.
 class ParamSpec(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     name: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,31}$")]
@@ -57,6 +60,9 @@ class ParamSpec(BaseModel):
 
     @model_validator(mode="after")
     def _consistent(self):
+        """Check the spec is complete for its type (int needs bounds, enum needs choices) and that
+        its default is valid.
+        """
         if self.type == "int" and (self.minimum is None or self.maximum is None):
             raise ValueError(f"int parameter {self.name} needs minimum and maximum")
         if self.type == "enum" and not self.choices:
@@ -79,12 +85,14 @@ class ParamSpec(BaseModel):
         return value
 
 
+# Default and maximum fault duration of a capability (seconds).
 class DurationLimits(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     default_seconds: Annotated[int, Field(ge=0, le=30, strict=True)]
     max_seconds: Annotated[int, Field(ge=0, le=30, strict=True)]
 
 
+# One fault the catalog offers: target, adapter, parameters, limits and expected impact.
 class Capability(Contract):
     id: Identifier
     title: str
@@ -110,6 +118,7 @@ class Capability(Contract):
 
     @model_validator(mode="after")
     def _disabled_needs_reason(self):
+        """A disabled capability must say why, and its default duration must not exceed the maximum."""
         if self.execution == Execution.DISABLED and not self.disabled_reason:
             raise ValueError(f"{self.id}: disabled capability needs disabled_reason")
         if self.duration.default_seconds > self.duration.max_seconds:
@@ -117,6 +126,9 @@ class Capability(Contract):
         return self
 
     def check_parameters(self, supplied: dict[str, ParamValue]) -> dict[str, ParamValue]:
+        """Validate supplied parameters against the specs, filling defaults; unknown names are
+        rejected.
+        """
         specs = {p.name: p for p in self.parameters}
         unknown = sorted(set(supplied) - set(specs))
         if unknown:
@@ -132,6 +144,7 @@ class SandboxRef(BaseModel):
     compose_project: str
 
 
+# A validated request to run one capability with given parameters in the sandbox.
 class Plan(Contract):
     plan_id: Identifier
     request_id: Identifier
@@ -147,6 +160,9 @@ class Plan(Contract):
     @field_validator("baseline_ref")
     @classmethod
     def _baseline_path(cls, value):
+        """baseline_ref must be a relative path inside artifacts/ (no absolute paths, '..' or
+        backslashes).
+        """
         if value is not None:
             path = PurePosixPath(value)
             if (path.is_absolute() or ".." in path.parts or "\\" in value
@@ -170,6 +186,7 @@ class RunState(str, Enum):
     NEEDS_ATTENTION = "NEEDS_ATTENTION"
 
 
+# Why a run stopped.
 class StopReason(str, Enum):
     COMPLETED = "completed"
     MANUAL_ABORT = "manual_abort"
@@ -182,6 +199,7 @@ class StopReason(str, Enum):
     PRECONDITION_FAILED = "precondition_failed"
 
 
+# Versions of source, images, config and workload a run used.
 class Revisions(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     source: str
@@ -190,6 +208,7 @@ class Revisions(BaseModel):
     workload_version: str
 
 
+# One run's record: state, revisions and the prior/applied/restored state.
 class Run(Contract):
     run_id: Identifier
     plan_id: Identifier
@@ -207,6 +226,7 @@ class Run(Contract):
     recovery_outcome: Optional[Literal["verified", "unverified", "failed"]] = None
 
 
+# One entry in a run's append-only event log.
 class Event(Contract):
     run_id: Identifier
     seq: Annotated[int, Field(ge=1)]
@@ -246,6 +266,7 @@ class Observation(Contract):
 
     @model_validator(mode="after")
     def _honest_completeness(self):
+        """An observation with missing signals cannot claim to be complete."""
         if self.complete and self.missing:
             raise ValueError("an observation with missing signals cannot be complete")
         return self
@@ -265,6 +286,7 @@ class ProbeStats(BaseModel):
     max_ms: Optional[float] = None
 
 
+# A healthy-system measurement used to derive policy gates.
 class Baseline(Contract):
     baseline_id: Identifier
     started_at: datetime
@@ -286,14 +308,17 @@ class Baseline(Contract):
 
     @model_validator(mode="after")
     def _verdict_matches_blockers(self):
+        """healthy must be true exactly when there are no blocking findings."""
         if self.healthy == bool(self.blocking):
             raise ValueError("healthy must be true exactly when there are no blocking findings")
         return self
 
     def probe(self, name: str) -> ProbeStats:
+        """Stats of one probe by name."""
         return next(p for p in self.probes if p.probe == name)
 
 
+# One numeric gate of a policy and the rule and inputs it was derived from.
 class Gate(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     value: Union[int, float]
@@ -302,6 +327,7 @@ class Gate(BaseModel):
     inputs: dict
 
 
+# Gates derived from at least two baselines that a payment run must respect.
 class PaymentPolicy(Contract):
     policy_version: str
     derived_at: datetime
@@ -326,6 +352,7 @@ class DiagnosisCategory(str, Enum):
     INSUFFICIENT_EVIDENCE = "insufficient_evidence"
 
 
+# A grounded root-cause statement that cites observations.
 class Diagnosis(Contract):
     run_id: Identifier
     service: Optional[str] = None
@@ -339,6 +366,9 @@ class Diagnosis(Contract):
 
     @model_validator(mode="after")
     def _grounded(self):
+        """Any diagnosis except insufficient_evidence must cite observations; insufficient_evidence
+        must carry high uncertainty.
+        """
         if self.category != DiagnosisCategory.INSUFFICIENT_EVIDENCE and not self.cited_observations:
             raise ValueError("a diagnosis other than insufficient_evidence must cite observations")
         if self.category == DiagnosisCategory.INSUFFICIENT_EVIDENCE and self.uncertainty != "high":
@@ -346,6 +376,7 @@ class Diagnosis(Contract):
         return self
 
 
+# One suggested next action and why.
 class Suggestion(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     kind: Literal["observe", "configuration", "code_fix", "retry_policy", "none"]
@@ -375,6 +406,9 @@ class DiagnosisResult(Contract):
 
     @model_validator(mode="after")
     def _status_consistent(self):
+        """A grounded result needs a diagnosis and no problems; a failed result carries no
+        diagnosis.
+        """
         if self.status == "grounded" and (self.diagnosis is None or self.problems):
             raise ValueError("a grounded result needs a diagnosis and no grounding problems")
         if self.status == "failed" and self.diagnosis is not None:
@@ -386,6 +420,7 @@ class DiagnosisResult(Contract):
 ALLOWED_PATCH_PREFIXES = ("src/payment/", "src/checkout/", "src/frontend/")
 
 
+# A proposed code change, its scope and its approval state.
 class Patch(Contract):
     patch_id: Identifier
     base_revision: GitRevision
@@ -400,6 +435,7 @@ class Patch(Contract):
     @field_validator("affected_files")
     @classmethod
     def _paths_in_scope(cls, files):
+        """Patch paths must be relative, without '..', and inside the allowed application paths."""
         for name in files:
             path = PurePosixPath(name)
             if path.is_absolute() or ".." in path.parts:
@@ -410,6 +446,7 @@ class Patch(Contract):
 
     @property
     def approved(self) -> bool:
+        """True when the approved diff hash equals the patch's diff hash."""
         return self.approved_diff_sha256 == self.diff_sha256
 
 
@@ -422,6 +459,7 @@ class PhaseSummary(BaseModel):
     p95_latency_ms: Optional[float] = None
 
 
+# Baseline vs fault vs recovery summaries of a run.
 class Comparison(Contract):
     comparison_id: Identifier
     original_run_id: Identifier

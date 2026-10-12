@@ -7,6 +7,9 @@ from .patches import prepare, structural_checks
 
 
 def main():
+    """Command line: prepare a reviewable patch from a diff in an isolated workspace, without
+    editing the pinned upstream checkout.
+    """
     parser = argparse.ArgumentParser(description='Prepare a reviewable patch without editing pinned upstream')
     parser.add_argument('--diff', type=Path, required=True)
     parser.add_argument('--patch-id', required=True)

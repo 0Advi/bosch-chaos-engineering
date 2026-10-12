@@ -11,6 +11,9 @@ MODELS = ["Capability", "Plan", "Run", "Event", "Observation", "Diagnosis", "Pat
 
 
 def main(check: bool = False) -> int:
+    """Write the JSON Schema of every contract to schemas/, or with check=True report schemas that
+    are stale.
+    """
     OUT.mkdir(exist_ok=True)
     stale = []
     for name in MODELS:

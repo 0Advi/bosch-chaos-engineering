@@ -54,12 +54,14 @@ def live_baseline_runner():
 
 
 def _run_view(run: dict) -> dict:
+    """The fields of a run record shown by the CLI."""
     keep = ("run_id", "capability_id", "state", "stop_reason", "result", "last_seq", "controller_pid",
             "watchdog_pid", "restorer", "abort_requested", "fault_deadline_at", "hard_deadline_at")
     return {k: run[k] for k in keep}
 
 
 def _runs_command(args) -> dict:
+    """Handle the run-management commands: abort, status, events, reconcile and restore."""
     store = RunStore(runner.DB_PATH)
     if args.cmd == "abort":
         return {"ok": store.request_abort(args.run_id), "run_id": args.run_id,
@@ -80,6 +82,7 @@ def _runs_command(args) -> dict:
 
 
 def _param(text: str):
+    """Parse a -p key=value argument into a bool, int or string value."""
     key, _, value = text.partition("=")
     if value.lower() in ("true", "false"):
         return key, value.lower() == "true"
@@ -87,6 +90,9 @@ def _param(text: str):
 
 
 def main(argv=None) -> int:
+    """Operator CLI entry point: parse the subcommand, run it and print a JSON result; returns the
+    exit code.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("capabilities", help="list the capability catalog")

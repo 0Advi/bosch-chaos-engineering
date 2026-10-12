@@ -26,6 +26,9 @@ SHOP_LAG = 0.6  # the shop page starts recording ~0.6 s after the dashboard page
 
 
 def caption_filter(tmp: Path, name: str, text: str, title: str | None = None) -> str:
+    """ffmpeg drawtext filters for a segment's title and wrapped caption (text read from files, no
+    escaping issues).
+    """
     parts = []
     if title:
         (tmp / f"{name}.title.txt").write_text(title)
@@ -38,6 +41,9 @@ def caption_filter(tmp: Path, name: str, text: str, title: str | None = None) ->
 
 
 def render(tmp: Path, seg: dict, out: Path):
+    """Render one segment (full dashboard or side-by-side dashboard and shop) to an mp4 with its
+    captions.
+    """
     speed = seg.get("speed", 1.0)
     cap = caption_filter(tmp, seg["name"], seg["caption"], seg.get("title"))
     if seg["kind"] == "full":
@@ -67,6 +73,7 @@ def render(tmp: Path, seg: dict, out: Path):
 
 
 def first(events, kind, run=None, video="dashboard", after=0.0, **match):
+    """The first logged event of a kind (optionally for a run, after a time, matching fields)."""
     for e in events:
         if e["video"] == video and e["kind"] == kind and e["t"] >= after and (run is None or e.get("run") == run) \
                 and all(e.get(k) == v for k, v in match.items()):
@@ -75,6 +82,7 @@ def first(events, kind, run=None, video="dashboard", after=0.0, **match):
 
 
 def short(text: str, n: int) -> str:
+    """Collapse whitespace and shorten text to n characters with an ellipsis."""
     text = " ".join(str(text or "").split())
     return text if len(text) <= n else text[: n - 1].rstrip() + "…"
 
@@ -116,6 +124,7 @@ def customer_moment(ev: list, inj_t: float, rec: dict, run_t: float) -> dict | N
 
 
 def plan_segments(out: Path) -> list[dict]:
+    """Turn the recorder's event log into the list of video segments with timings and captions."""
     ev = json.loads((out / "events.json").read_text())["events"]
     dash, shop = str(out / "dashboard.webm"), str(out / "shop.webm")
     segs = []
@@ -184,6 +193,7 @@ def plan_segments(out: Path) -> list[dict]:
 
 
 def main():
+    """Command line: plan, render and concatenate the demo video within the maximum length."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", default="artifacts/demo-video")
     parser.add_argument("--max", type=float, default=178)

@@ -53,6 +53,9 @@ def removes_fault_injection(original: str, patched: str) -> list[str]:
 
 
 def syntax_check(rel: str, text: str) -> dict:
+    """Syntax-check a patched file with the matching local tool (node --check, py_compile, ruby -c
+    or gofmt); languages without a local checker pass with a note.
+    """
     suffix = Path(rel).suffix
     commands = {".js": ["node", "--check"], ".py": ["python3", "-m", "py_compile"], ".rb": ["ruby", "-c"],
                 ".go": ["gofmt", "-e", "-l"]}
@@ -70,6 +73,9 @@ def syntax_check(rel: str, text: str) -> dict:
 
 
 def validate_fix(fix: dict) -> dict:
+    """Accept or reject an AI fix: real application source file, unique find text, no deleting of
+    the injected fault, and a passing syntax check; returns the diff and how it can be deployed.
+    """
     rel = fix["file"].strip().lstrip("/").removeprefix("src/")
     service = rel.split("/")[0]
     try:

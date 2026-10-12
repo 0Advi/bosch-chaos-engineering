@@ -37,7 +37,11 @@ DB_PATH = RESULTS / "controller.sqlite3"
 
 
 class StopRun(Exception):
+    """Raised inside a run to stop it early with a reason (abort, signal, conflict, degraded
+    protected paths).
+    """
     def __init__(self, reason: R, detail: str):
+        """Record the stop reason and detail."""
         super().__init__(detail)
         self.reason, self.detail = reason, detail
 
@@ -48,6 +52,9 @@ class LostOwnership(Exception):
 
 # ------------------------------------------------------------- validation
 def validate(plan: Plan, catalog: Catalog, policy: dict) -> tuple:
+    """Check a plan against the catalog and policy: capability allowed, parameters in bounds,
+    duration within limits and policy version current.
+    """
     cap = catalog.plannable(plan.capability_id)
     try:
         params = cap.check_parameters(plan.parameters)
@@ -62,6 +69,9 @@ def validate(plan: Plan, catalog: Catalog, policy: dict) -> tuple:
 
 
 def load_limits(policy: dict) -> RunLimits:
+    """Load run limits from the derived payment policy (error if baselines have not been turned into
+    a policy yet).
+    """
     if not payment_policy.POLICY_PATH.exists():
         raise Unsupported("PAYMENT_POLICY_MISSING",
                           "config/payment_policy.yaml not found; run make baseline twice and make derive-policy")
@@ -112,8 +122,12 @@ def reconcile_orphans(store: RunStore, env: Environment) -> list[dict]:
 
 # ------------------------------------------------------------------ runner
 class Runner:
+    """Durable, guarded executor for one run: arms the recovery journal, applies the fault, probes,
+    checks gates and always hands over to restoration.
+    """
     def __init__(self, store: RunStore, env: Environment, limits: RunLimits,
                  log: Callable[[str], None] = print):
+        """Set up the store, environment, limits, logger, owner id and result counters."""
         self.store, self.env, self.limits, self.log = store, env, limits, log
         self.who = f"controller:{os.getpid()}"
         self.signal_reason: Optional[R] = None
@@ -121,6 +135,7 @@ class Runner:
                        "protected": {"samples": 0, "failures": 0}}
 
     def run(self, plan: Plan, cap: Capability, params: dict) -> dict:
+        """Create and drive a run for a validated plan."""
         return self.drive(self.create(plan), plan, cap, params)
 
     def create(self, plan: Plan) -> str:
@@ -194,6 +209,9 @@ class Runner:
         return services
 
     def _arm(self, run_id: str, plan: Plan, cap: Capability, params: dict, services: dict) -> Optional[FlagChange]:
+        """Prepare the flag change, make the recovery journal durable, set the deadlines and move
+        the run to ARMED.
+        """
         change = None
         if cap.adapter == AdapterKind.FLAG:
             flag, variant = adapters.flag_variant(cap, params)
@@ -210,6 +228,7 @@ class Runner:
 
     def _fault(self, run_id: str, plan: Plan, cap: Capability, params: dict,
                change: Optional[FlagChange]) -> None:
+        """Apply the fault (flag change or fixture) and, for flags, observe it until the deadline."""
         self._check_stop(run_id, None, expect=S.ARMED)
         self.store.transition(run_id, S.RUNNING)
         deadline = time.monotonic() + plan.duration_seconds
@@ -230,6 +249,9 @@ class Runner:
         self._probe_loop(run_id, change, deadline)
 
     def _probe_loop(self, run_id: str, change: FlagChange, deadline: float) -> None:
+        """During the fault: probe checkout and protected paths at the policy interval, stopping on
+        abort, conflict, stale observations or degraded protected paths.
+        """
         lim, last_observation = self.limits, time.monotonic()
         stale_after = lim.observation_max_age_s + lim.checkout_timeout_s + 4 * lim.protected_timeout_s
         while time.monotonic() < deadline:
@@ -252,6 +274,7 @@ class Runner:
 
     # --------------------------------------------------------------- checks
     def _check_stop(self, run_id: str, change: Optional[FlagChange], expect: S = S.RUNNING) -> None:
+        """Raise StopRun on a signal, an abort request or an external change to the flag file."""
         if self.signal_reason:
             raise StopRun(self.signal_reason, "signal received")
         run = self._check_owner(run_id, expect)
@@ -261,12 +284,16 @@ class Runner:
             raise StopRun(R.CONFIG_CONFLICT, "flag file changed externally during the run")
 
     def _check_owner(self, run_id: str, expect: S = S.RUNNING) -> dict:
+        """Make sure this controller still owns the run in the expected state (otherwise
+        LostOwnership).
+        """
         run = self.store.get(run_id)
         if run["state"] != expect.value or run["restorer"] not in (None, self.who):
             raise LostOwnership()
         return run
 
     def _check_protected(self) -> None:
+        """Stop the run if protected paths fail more than the policy allows."""
         p, lim = self.result["protected"], self.limits
         too_many = p["failures"] > lim.allowed_protected_failures
         rate_bad = p["samples"] >= lim.protected_min_samples and \
@@ -276,6 +303,7 @@ class Runner:
                           f"protected failures {p['failures']}/{p['samples']} exceed policy")
 
     def _sleep(self, run_id: str, change: FlagChange, until: float) -> None:
+        """Sleep until a time while still checking for stops and sending heartbeats."""
         while (remaining := until - time.monotonic()) > 0:
             time.sleep(min(remaining, 0.2))
             self._check_stop(run_id, change)
@@ -283,10 +311,12 @@ class Runner:
 
     # ---------------------------------------------------------------- helpers
     def _count(self, kind: str, failed: bool) -> None:
+        """Count one affected or protected sample and whether it failed."""
         self.result[kind]["samples"] += 1
         self.result[kind]["failures"] += int(failed)
 
     def _observe(self, run_id: str, phase: str, attempt: dict) -> None:
+        """Record one checkout attempt as an observation event."""
         self.store.emit(run_id, "observation", phase=phase, probe="POST /api/checkout",
                         http_status=attempt.get("http_status"), error_code=attempt.get("error_code"),
                         latency_ms=attempt.get("latency_ms"), matched=attempt.get("matched"),
@@ -294,6 +324,9 @@ class Runner:
                         transport_error=attempt.get("transport_error"))
 
     def _finish_result(self, cap: Capability) -> None:
+        """Decide whether the result is conclusive (enough samples or fixture results) and whether
+        impact was observed.
+        """
         a = self.result["affected"]
         if cap.adapter == AdapterKind.FLAG:
             self.result["conclusive"] = a["samples"] >= self.limits.min_affected_samples
@@ -305,11 +338,15 @@ class Runner:
             self.result["conclusive"] = self.result.get("fixture_results", 0) > 0
 
     def _summary(self, run_id: str, **extra) -> dict:
+        """Final summary of the run: state, stop reason, result and event count."""
         run = self.store.get(run_id)
         return {"run_id": run_id, "state": run["state"], "stop_reason": run["stop_reason"],
                 "result": run["result"], "events": run["last_seq"], **extra}
 
     def _spawn_watchdog(self, run_id: str) -> None:
+        """Start the independent watchdog process for the run (required for live runs) and wait for
+        it to acknowledge.
+        """
         argv = self.env.watchdog_argv(self.store.path, run_id)
         if not argv:
             if isinstance(self.env, LiveEnvironment):
@@ -335,7 +372,11 @@ class Runner:
         raise RuntimeError("watchdog readiness acknowledgement missing")
 
     def _install_signals(self):
+        """Turn Ctrl-C / SIGTERM into a manual abort while the run is active; returns the previous
+        handlers.
+        """
         def handler(signum, _frame):
+            """Mark the run for a manual abort."""
             self.signal_reason = R.MANUAL_ABORT
         try:
             return {s: signal.signal(s, handler) for s in (signal.SIGINT, signal.SIGTERM)}
@@ -344,12 +385,14 @@ class Runner:
 
     @staticmethod
     def _restore_signals(previous: dict) -> None:
+        """Put back the signal handlers that were active before the run."""
         for sig, handler in previous.items():
             signal.signal(sig, handler)
 
 
 # --------------------------------------------------------------- entrypoint
 def dry_run(plan: Plan) -> dict:
+    """Validate a plan and describe the exact actions it would take, without executing anything."""
     catalog, policy, spec = Catalog(), load_policy(), sandbox.load_spec()
     cap, params = validate(plan, catalog, policy)
     actions = adapters.describe(cap, params, spec["network"], endpoints.app_url())
@@ -383,6 +426,9 @@ def execute(plan: Plan, live: bool = False, *, env: Optional[Environment] = None
             store: Optional[RunStore] = None, limits: Optional[RunLimits] = None,
             gate_check: Optional[Callable[[Plan, Capability], list[str]]] = None,
             log: Callable[[str], None] = print, results_dir: Optional[Path] = None) -> dict:
+    """Run a plan: a dry run by default; live only after every gate passes, then export evidence and
+    the report.
+    """
     if not live:
         return dry_run(plan)
     run, cap, params = prepare(plan, env=env, store=store, limits=limits, gate_check=gate_check, log=log)

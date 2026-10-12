@@ -58,9 +58,6 @@
         "schema_version": {
           "const": "1.0.0",
           "default": "1.0.0",
-          "enum": [
-            "1.0.0"
-          ],
           "title": "Schema Version",
           "type": "string"
         }
@@ -203,6 +200,7 @@
     "baseline_reference": {
       "anyOf": [
         {
+          "additionalProperties": true,
           "type": "object"
         },
         {
@@ -236,6 +234,7 @@
       "type": "boolean"
     },
     "evidence": {
+      "additionalProperties": true,
       "title": "Evidence",
       "type": "object"
     },
@@ -254,6 +253,7 @@
     "injection": {
       "anyOf": [
         {
+          "additionalProperties": true,
           "type": "object"
         },
         {
@@ -278,10 +278,12 @@
       "type": "array"
     },
     "plan": {
+      "additionalProperties": true,
       "title": "Plan",
       "type": "object"
     },
     "protected": {
+      "additionalProperties": true,
       "title": "Protected",
       "type": "object"
     },
@@ -298,9 +300,6 @@
     "schema_version": {
       "const": "1.0.0",
       "default": "1.0.0",
-      "enum": [
-        "1.0.0"
-      ],
       "title": "Schema Version",
       "type": "string"
     },

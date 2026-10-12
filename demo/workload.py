@@ -32,6 +32,7 @@ class Workload:
     cannot starve measurement of the others; plus a buyer loop for cart+checkout."""
 
     def __init__(self, emit: Callable[[dict], None], pause_s: float = 0.6):
+        """Prepare the synthetic customers (shop client, pacing, phase label, request log)."""
         self.shop = Shop(app_url(), timeout=TIMEOUT_S)
         self.emit, self.pause_s = emit, pause_s
         self.phase = "baseline"
@@ -44,9 +45,11 @@ class Workload:
         self._image_delay, self._image_flag_at = 0, -10.0
 
     def t(self) -> float:
+        """Seconds since the workload was created."""
         return round(time.monotonic() - self.started, 2)
 
     def start(self):
+        """Start one probe thread per browse path plus the buyer thread."""
         loops = [(name, call) for name, call in self._browse_calls()] + [("buyer", None)]
         for name, call in loops:
             target = self._buyer if call is None else self._probe
@@ -57,12 +60,16 @@ class Workload:
             time.sleep(0.05)
 
     def halt(self):
+        """Stop all customers and wait for their threads."""
         self.stop.set()
         for thread in self.threads:
             thread.join(timeout=TIMEOUT_S * 2)
 
     # ---------------------------------------------------------------- record
     def _record(self, endpoint: str, result: dict, started: tuple[float, str], ok: bool | None = None, **extra):
+        """Record one request with the phase it started in, its status, latency, timeout flag and
+        trace id, and emit it to the dashboard.
+        """
         # Phase is the one in force when the request *started*.
         status = result.get("http_status")
         row = {"t": self.t(), "t0": round(started[0], 2), "phase": started[1], "endpoint": endpoint,
@@ -77,16 +84,22 @@ class Workload:
 
     # ----------------------------------------------------------------- loops
     def _browse_calls(self):
+        """The browse paths and how each one is requested (home, product list in EUR, product page,
+        recommendations, ads, image, shipping quote).
+        """
         shop = self.shop
 
         def product(i):
+            """Request a product page, rotating through a fixed product list."""
             return shop.call(f"/api/products/{PRODUCTS[i % len(PRODUCTS)]}?currencyCode=EUR")
 
         def recommendations(i):
+            """Request recommendations for a rotating product."""
             return shop.call("/api/recommendations?" + urlencode(
                 {"productIds": PRODUCTS[i % len(PRODUCTS)], "sessionId": f"chaos-{i}", "currencyCode": "USD"}))
 
         def shipping(i):
+            """Request an international shipping quote for one item."""
             return shop.call("/api/shipping?" + urlencode({
                 "itemList": json.dumps([{"productId": PRODUCTS[i % len(PRODUCTS)], "quantity": 1}]),
                 "currencyCode": "EUR", "address": json.dumps(INTL_ADDRESS)}))
@@ -125,6 +138,9 @@ class Workload:
         return result
 
     def _checkout_intl(self, session: str) -> dict:
+        """Place an order with an international (German) address, as the shop's checkout API would
+        receive it.
+        """
         from controller.observer.http import FAKE_CARD, SYNTHETIC_EMAIL
         result = self.shop.call("/api/checkout?currencyCode=USD", {
             "userId": session, "email": SYNTHETIC_EMAIL, "userCurrency": "USD",
@@ -134,6 +150,7 @@ class Workload:
         return result
 
     def _probe(self, endpoint: str, call):
+        """Loop for one browse path: request it, record the result, pause, until stopped."""
         i = 0
         while not self.stop.is_set():
             started = (self.t(), self.phase)
@@ -147,6 +164,9 @@ class Workload:
             self.stop.wait(self.pause_s)
 
     def _buyer(self):
+        """Buyer loop: add to cart, view cart, then check out (alternating domestic and
+        international orders), until stopped.
+        """
         shop = self.shop
         while not self.stop.is_set():
             session = "chaos-" + uuid4().hex[:12]
@@ -171,6 +191,7 @@ class Workload:
 
     # ------------------------------------------------------------- snapshots
     def window(self, seconds: float) -> list[dict]:
+        """Requests completed in the last given number of seconds."""
         cutoff = self.t() - seconds
         with self.lock:
             return [r for r in self.records if r["t"] >= cutoff]

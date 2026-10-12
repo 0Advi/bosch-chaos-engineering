@@ -26,6 +26,7 @@ const state = {
   busy: false,
   selected: savedRun,
 };
+/** Escape a value for safe insertion into HTML. */
 const esc = (v) =>
   String(v ?? "").replace(
     /[&<>"']/g,
@@ -34,30 +35,38 @@ const esc = (v) =>
         c
       ],
   );
+/** Pretty-printed, HTML-escaped JSON. */
 const json = (value) => esc(JSON.stringify(value, null, 2));
+/** Show a notice message. */
 const note = (text) => {
   document.querySelector("#notice").textContent = text;
 };
+/** A stable idempotency key per action for this browser session. */
 const actionKey = (action) => {
   const key = "workbench-key-" + action;
   if (!sessionStorage.getItem(key))
     sessionStorage.setItem(key, crypto.randomUUID());
   return sessionStorage.getItem(key);
 };
+/** HTML for a button. */
 function button(id, label, disabled = false, klass = "") {
   return `<button type="${id === "validate" ? "submit" : "button"}" id="${id}" class="${klass}" ${disabled ? "disabled" : ""}>${label}</button>`;
 }
+/** HTML listing the reasons an action is blocked (empty when none). */
 function blockers(reasons) {
   return reasons.length
     ? `<div class="blocked"><strong>Before continuing</strong><ul>${reasons.map((r) => `<li>${esc(r)}</li>`).join("")}</ul></div>`
     : "";
 }
+/** HTML definition list of label/value pairs. */
 function facts(rows) {
   return `<dl class="facts">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>`;
 }
+/** Page heading, marked as illustrative in fixture mode. */
 function heading(title, description) {
   return `<p class="eyebrow">${state.mode === "fixture" ? "ILLUSTRATIVE DATA · NO REAL INJECTION" : "PAYMENT EXPERIMENTS"}</p><h1>${title}</h1><p class="lead">${description}</p>`;
 }
+/** The capability selected in the form. */
 function capability() {
   return (
     state.capabilities.find(
@@ -67,6 +76,7 @@ function capability() {
     state.capabilities[0]
   );
 }
+/** Render the plan page: capability, parameters, scope, gates and the validate / run controls. */
 function planView() {
   const cap =
     state.capabilities.find((c) => c.id === state.plan?.capability_id) ||
@@ -94,6 +104,7 @@ function planView() {
         ["Source", state.mode],
       ],
     )}<div class="actions">${button("baseline", "Capture healthy baseline", state.mode !== "controller" || state.busy || state.history.some(r => !["RECOVERED", "ABORTED", "FAILED"].includes(r.state)))}</div><p class="muted">${esc(state.readiness?.baseline_job?.state || "No baseline capture running")}</p><h2>Scope and recovery</h2><div id="scope"></div></aside></div>`;
+  /** Render the selected capability's parameters and scope. */
   function scope() {
     const c = capability();
     document.querySelector("#parameters").innerHTML = (c?.parameters || [])
@@ -112,6 +123,7 @@ function planView() {
       : "No capabilities available.";
     gates();
   }
+  /** Render why a live run is blocked and enable Run only when no gate blocks. */
   function gates() {
     const reasons = runGate(
       state.readiness,
@@ -188,6 +200,7 @@ function planView() {
   };
   scope();
 }
+/** Render the selected run: state, recovery, timeline, observations and diagnosis. */
 function runView() {
   const run = state.run;
   content.innerHTML =
@@ -237,6 +250,7 @@ function runView() {
     await refresh();
   });
 }
+/** Render the list of saved runs. */
 function historyView() {
   content.innerHTML =
     heading(
@@ -255,6 +269,7 @@ function historyView() {
       }),
   );
 }
+/** Render the patch review page and its approval gates. */
 function patchView() {
   const reviewerName = document.querySelector("#reviewer")?.value || "";
   const review = state.review;
@@ -314,6 +329,7 @@ function patchView() {
     await refresh();
   });
 }
+/** Render the comparison between the original run and its replay. */
 function compareView() {
   const c = state.comparison;
   content.innerHTML =
@@ -336,6 +352,7 @@ function compareView() {
           )
           .join("")}</tbody></table></div>${blockers(c.limitations || [])}`);
 }
+/** Render the page for the current URL hash and mark the active nav link. */
 function render() {
   const page = (location.hash || "#plan").slice(1);
   document
@@ -353,6 +370,7 @@ function render() {
     })[page] || planView
   )();
 }
+/** Run an action once at a time, showing any error as a notice. */
 async function perform(fn) {
   if (state.busy) return;
   state.busy = true;
@@ -366,6 +384,7 @@ async function perform(fn) {
     state.busy = false;
   }
 }
+/** Send a mutating request with an idempotency key (refused in fixture mode). */
 async function mutate(key, path, body) {
   if (state.mode !== "controller") {
     note("Fixture actions cannot mutate the application.");
@@ -377,6 +396,7 @@ async function mutate(key, path, body) {
     return result;
   });
 }
+/** Reload the controller snapshot and the selected run, then re-render. */
 async function refresh() {
   try {
     const snapshot = await api.call("");

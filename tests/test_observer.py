@@ -15,15 +15,18 @@ from tests.fake_shop import FakeShop
 
 @pytest.fixture
 def shop():
+    """Fixture: a running fake shop."""
     with FakeShop() as fake:
         yield fake
 
 
 def clients(fake, logs=None):
+    """A shop client and telemetry client for the fake shop."""
     return Shop(fake.url, 5), Telemetry(fake.url + "/jaeger/ui/api", fake.url, timeout=2, log_search=logs)
 
 
 def test_valid_checkout_places_order_and_clears_cart(shop):
+    """A valid checkout places an order and empties the cart."""
     client, _ = clients(shop)
     record = run_attempt(client, "valid", "baseline")
     assert record["matched"], record["checks"]
@@ -33,6 +36,7 @@ def test_valid_checkout_places_order_and_clears_cart(shop):
 
 @pytest.mark.parametrize("control", CONTROLS)
 def test_invalid_card_controls_declined_and_cart_retained(shop, control):
+    """Invalid-card controls are declined and the cart is kept."""
     client, _ = clients(shop)
     record = run_attempt(client, control, "control")
     assert record["matched"], record["checks"]
@@ -41,12 +45,14 @@ def test_invalid_card_controls_declined_and_cart_retained(shop, control):
 
 
 def test_each_attempt_uses_a_fresh_cart(shop):
+    """Every attempt uses a new synthetic user and cart."""
     client, _ = clients(shop)
     users = {run_attempt(client, "valid", "baseline")["synthetic_user"] for _ in range(3)}
     assert len(users) == 3
 
 
 def test_records_never_contain_card_cvv_address_or_email(shop):
+    """Attempt records and observations never contain card number, CVV, address or email."""
     client, telemetry = clients(shop)
     records = [run_attempt(client, name, "control") for name in ("valid", *CONTROLS)]
     observations = [observe_checkout(r, telemetry, "run-test", 2, check_logs=False)[0] for r in records]
@@ -59,6 +65,9 @@ def test_records_never_contain_card_cvv_address_or_email(shop):
 
 
 def test_complete_observation_links_trace_through_payment(shop):
+    """A complete observation links the request's trace through checkout to payment, with logs and
+    metrics.
+    """
     client, telemetry = clients(shop, logs=lambda tid: {"hits": 2, "excerpts": []})
     obs, detail = observe_checkout(run_attempt(client, "valid", "baseline"), telemetry, "run-test", 2)
     assert obs.complete and obs.fresh and obs.missing == []
@@ -68,6 +77,7 @@ def test_complete_observation_links_trace_through_payment(shop):
 
 
 def test_declined_card_trace_shows_payment_error(shop):
+    """A declined card's trace shows the payment error span."""
     client, telemetry = clients(shop, logs=lambda tid: {"hits": 1, "excerpts": []})
     obs, detail = observe_checkout(run_attempt(client, "expired", "control"), telemetry, "run-test", 2)
     assert obs.outcome == "http_error" and obs.http_status == 422 and obs.cart_retained
@@ -75,6 +85,7 @@ def test_declined_card_trace_shows_payment_error(shop):
 
 
 def test_missing_trace_is_reported_not_invented(shop):
+    """A missing trace is reported as missing rather than invented."""
     shop.drop_traces = True
     client, telemetry = clients(shop, logs=lambda tid: None)
     obs, _ = observe_checkout(run_attempt(client, "valid", "baseline"), telemetry, "run-test", 0.5)
@@ -84,6 +95,7 @@ def test_missing_trace_is_reported_not_invented(shop):
 
 
 def test_unreachable_shop_is_counted_as_a_failed_attempt():
+    """An unreachable shop counts as a failed attempt with a transport error."""
     client = Shop("http://127.0.0.1:9", 1)      # nothing listens on the discard port
     record = run_attempt(client, "valid", "baseline")
     assert record["matched"] is False and record["failed_step"] == "add_to_cart"
@@ -92,6 +104,7 @@ def test_unreachable_shop_is_counted_as_a_failed_attempt():
 
 
 def test_protected_probes_cover_home_catalog_and_cart(shop):
+    """Protected probes cover home, catalog and cart."""
     client, _ = clients(shop)
     results = protected_probes(client)
     assert [r["probe"] for r in results] == ["GET /", "GET /api/products", "POST /api/cart", "GET /api/cart"]
@@ -99,6 +112,9 @@ def test_protected_probes_cover_home_catalog_and_cart(shop):
 
 
 def test_sanitize_redacts_cards_emails_and_sensitive_keys():
+    """Sanitizing redacts card numbers, emails, CVVs and sensitive keys but keeps trace ids and
+    numbers.
+    """
     raw = {"body": "card 4432-8015-6152-0454 cvv: 672 for a@b.com", "creditCard": {"x": 1},
            "trace": "0af7651916cd43dd8448eb211c80319c", "latency_ms": 2809.4}
     clean = sanitize(raw)
@@ -110,6 +126,7 @@ def test_sanitize_redacts_cards_emails_and_sensitive_keys():
 
 
 def test_observation_cannot_claim_completeness_with_missing_signals():
+    """An observation with missing signals cannot be marked complete."""
     with pytest.raises(ValidationError, match="cannot be complete"):
         Observation(observation_id="obs-1", run_id="run-1", at="2026-10-10T00:00:00Z",
                     probe="POST /api/checkout", phase="baseline", outcome="success",

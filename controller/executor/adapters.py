@@ -31,11 +31,17 @@ MONEY_MODES = {
 
 # ------------------------------------------------------------------- flags
 def flag_variant(cap: Capability, params: dict) -> tuple[str, str]:
+    """The flag and variant a flag capability sets (the failure_rate parameter, or the catalog's
+    default variant).
+    """
     cfg = cap.adapter_config
     return cfg["flag"], params.get("failure_rate", cfg.get("fault_variant"))
 
 
 def flag_apply(store: FlagStore, cap: Capability, params: dict) -> tuple[FlagSnapshot, FlagSnapshot]:
+    """Set a flag capability's variant, guarded by the flag file's current hash; returns the
+    snapshots before and after.
+    """
     flag, variant = flag_variant(cap, params)
     prior = store.snapshot(flag)
     applied = store.set_variant(flag, variant, prior.sha256)
@@ -44,6 +50,9 @@ def flag_apply(store: FlagStore, cap: Capability, params: dict) -> tuple[FlagSna
 
 # -------------------------------------------------------- checkout fixture
 def currency_mismatch(shop: Shop, cap: Capability, params: dict) -> list[dict]:
+    """Fixture: place checkouts in the given (mismatched) currency and record each outcome and
+    whether the cart was kept.
+    """
     cfg, results = cap.adapter_config, []
     for _ in range(params["attempts"]):
         user = shop.new_cart(cfg["product_id"], cfg["quantity"])
@@ -54,11 +63,15 @@ def currency_mismatch(shop: Shop, cap: Capability, params: dict) -> list[dict]:
 
 
 def duplicate_submit(shop: Shop, cap: Capability, params: dict) -> list[dict]:
+    """Fixture: submit the same cart's checkout several times concurrently and record how many
+    orders were accepted (duplicate-order risk).
+    """
     cfg, n = cap.adapter_config, params["concurrency"]
     user = shop.new_cart(cfg["product_id"], cfg["quantity"])
     gate = threading.Barrier(n)
 
     def fire(_):
+        """One concurrent checkout, released together with the others by a barrier."""
         gate.wait(timeout=5)
         return shop.checkout(user, cfg["currency_code"])
 
@@ -71,6 +84,7 @@ def duplicate_submit(shop: Shop, cap: Capability, params: dict) -> list[dict]:
 
 
 def valid_checkout(shop: Shop, product_id: str = "66VCHSJNUP") -> dict:
+    """Place one valid checkout and mark whether an order was created."""
     user = shop.new_cart(product_id, 1)
     result = shop.checkout(user, "USD")
     result["ok"] = result["http_status"] == 200 and bool(result["order_id"])
@@ -79,6 +93,9 @@ def valid_checkout(shop: Shop, product_id: str = "66VCHSJNUP") -> dict:
 
 # ------------------------------------------------------ payment gRPC fixture
 def grpc_argv(cap: Capability, params: dict, network: str, run_id: str, timeout: float) -> list[str]:
+    """The docker command that calls the payment Charge RPC through grpcurl inside the sandbox
+    network, with the chosen amount mode and the fake card.
+    """
     cfg = cap.adapter_config
     payload = json.dumps({"amount": MONEY_MODES[params["mode"]], "creditCard": FAKE_CARD})
     return ["docker", "run", "--rm", "--network", network, "--label", f"bosch.chaos.run={run_id}",
@@ -91,6 +108,9 @@ def grpc_argv(cap: Capability, params: dict, network: str, run_id: str, timeout:
 
 
 def payment_charge(cap: Capability, params: dict, network: str, run_id: str, timeout: float) -> list[dict]:
+    """Fixture: call payment Charge directly (repeated as configured) and record exit code,
+    transaction id, gRPC code, message and latency.
+    """
     argv, results = grpc_argv(cap, params, network, run_id, timeout), []
     for attempt in range(params.get("repeat", 1)):
         started = time.monotonic()

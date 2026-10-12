@@ -6,6 +6,10 @@ export const ACTIVE = new Set([
   "VERIFYING_RECOVERY",
   "NEEDS_ATTENTION",
 ]);
+/**
+ * Reasons a live run is blocked (fixture mode, stale state, no plan, capability not live, execution
+ * off, no isolation, baseline or watchdog).
+ */
 export function runGate(readiness, capability, mode, plan, stale) {
   const reasons = [...(readiness?.blockers || [])];
   if (mode !== "controller")
@@ -24,6 +28,10 @@ export function runGate(readiness, capability, mode, plan, stale) {
     reasons.push("Recovery watchdog is not ready.");
   return [...new Set(reasons)];
 }
+/**
+ * Merge newly received events into the saved ones: dedupe by sequence, reject conflicts or gaps,
+ * return them in order.
+ */
 export function mergeEvents(existing, incoming, runId) {
   const map = new Map(existing.map((e) => [e.seq, e]));
   for (const event of incoming) {
@@ -41,6 +49,7 @@ export function mergeEvents(existing, incoming, runId) {
     throw Error("Event gap; reload the saved timeline.");
   return events;
 }
+/** Human label for a run's cleanup and recovery status. */
 export function recoveryLabel(run) {
   if (!run) return "No run selected";
   if (run.cleanup_verified !== true) return "Cleanup unverified";
@@ -48,6 +57,10 @@ export function recoveryLabel(run) {
     ? "Recovery verified"
     : "Recovery unverified";
 }
+/**
+ * Reasons a patch cannot be deployed yet (state, diff, tests, approval, deployment gates,
+ * recovery).
+ */
 export function patchGate(review, run, mode, stale) {
   const reasons = [];
   if (mode !== "controller" || stale)
@@ -75,6 +88,7 @@ export function patchGate(review, run, mode, stale) {
     reasons.push("Wait for verified cleanup and recovery.");
   return reasons;
 }
+/** Human label for a replay comparison result. */
 export function comparisonLabel(comparison, fixture = false) {
   if (fixture) return "Illustrative comparison";
   if (comparison?.conclusive !== true) return "Unverified comparison";

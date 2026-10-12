@@ -31,6 +31,7 @@ RUN_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,63}$")
 
 
 def _write(path: Path, text: str) -> None:
+    """Atomically write a text file (temp file then rename), removing the temp file on failure."""
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
@@ -42,6 +43,7 @@ def _write(path: Path, text: str) -> None:
 
 
 def _run_record(run: dict) -> dict:
+    """The exportable run record, with the raw flag-file text removed from the recovery journal."""
     keep = ("run_id", "plan_id", "request_id", "capability_id", "state", "stop_reason", "created_at",
             "fault_deadline_at", "hard_deadline_at", "restorer", "abort_requested", "last_seq",
             "plan", "result")
@@ -57,6 +59,7 @@ def _run_record(run: dict) -> dict:
 
 
 def run_dir(results_dir: Path, run_id: str) -> Path:
+    """The results directory of a run (rejects invalid run ids so paths cannot escape)."""
     if not RUN_ID_RE.match(run_id):
         raise ValueError("invalid run id")
     return results_dir / run_id
@@ -86,6 +89,7 @@ def export_run(store: RunStore, run_id: str, results_dir: Path, root: Path = ROO
 
 
 def load_dir(directory: Path) -> tuple[dict, list[Event]]:
+    """Read an exported run directory back: run.json and the events from events.jsonl."""
     record = json.loads((directory / "run.json").read_text())
     events = [Event.model_validate_json(line) for line in
               (directory / "events.jsonl").read_text().splitlines() if line.strip()]

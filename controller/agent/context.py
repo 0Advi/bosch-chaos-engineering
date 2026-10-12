@@ -24,6 +24,7 @@ PAYMENT_PATH = {"frontend-proxy", "frontend", "checkout", "payment", "currency",
 
 @dataclass(frozen=True)
 class Excerpt:
+    """One pinned source excerpt for the diagnosis context, with its verification status."""
     id: str
     path: str
     text: Optional[str]
@@ -31,12 +32,18 @@ class Excerpt:
 
 
 def extract(text: str, start: str, end: Optional[str]) -> str:
+    """Return the text from the start anchor up to (not including) the end anchor, or to the end of
+    the file.
+    """
     i = text.index(start)
     j = text.index(end, i) if end else len(text)
     return text[i:j].rstrip() + "\n"
 
 
 def load_excerpts(config: Path = SOURCE_CONFIG, root: Path = ROOT) -> list[Excerpt]:
+    """Load every excerpt listed in config/source_context.yaml from the pinned upstream source,
+    marking missing files, missing anchors and hash mismatches.
+    """
     spec = yaml.safe_load(config.read_text())
     base = root / spec["root"]
     out = []
@@ -56,6 +63,7 @@ def load_excerpts(config: Path = SOURCE_CONFIG, root: Path = ROOT) -> list[Excer
 
 
 def payment_edges(path: Path = DEPENDENCY_MAP) -> list[str]:
+    """Dependency-map edges between services on the payment path, as readable strings."""
     doc = json.loads(path.read_text())
     edges = {f"{e['from']}->{e['to']} ({e['relationship']}, {e['evidence_type']}"
              f"{', runtime-observed' if e.get('runtime_observed') else ''})"
@@ -65,16 +73,23 @@ def payment_edges(path: Path = DEPENDENCY_MAP) -> list[str]:
 
 @dataclass(frozen=True)
 class SourceContext:
+    """The stable context block sent to the diagnosis model (payment semantics, payment-path edges,
+    source excerpts) and its hash.
+    """
     text: str
     sha256: str
     excerpt_status: dict
 
     @property
     def complete(self) -> bool:
+        """True when every source excerpt was verified against the pinned source."""
         return all(s == "verified" for s in self.excerpt_status.values())
 
 
 def build_context(root: Path = ROOT) -> SourceContext:
+    """Assemble the cacheable diagnosis context: payment semantics, payment-path dependency edges
+    and the pinned source excerpts.
+    """
     excerpts = load_excerpts(root=root)
     semantics = yaml.safe_load(SEMANTICS.read_text())
     parts = ["<payment_semantics source=\"config/payment_semantics.yaml\" kind=\"source-derived expectations\">",

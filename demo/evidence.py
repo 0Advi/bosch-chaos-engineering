@@ -27,10 +27,14 @@ _HEALTH: dict = {"at": 0.0, "value": None}
 
 
 def _check_health() -> dict:
+    """Check, in parallel, that the shop, Prometheus and Jaeger answer and that no fault is active
+    (file and live flagd state).
+    """
     from concurrent.futures import ThreadPoolExecutor
     from . import faults
 
     def ok(url: str) -> bool:
+        """True if the URL answers HTTP 200 within 4 s."""
         try:
             with urlopen(url, timeout=4) as resp:
                 return resp.status == 200
@@ -54,6 +58,7 @@ def health(max_age_s: float = 5) -> dict:
 
 # ------------------------------------------------------------------ metrics
 def span_counters() -> dict:
+    """Read all span-metric call counters from Prometheus as {'service|span|status': count}."""
     result = TELEMETRY.query(SPAN_COUNTERS) or []
     return {f'{r["metric"].get("service_name")}|{r["metric"].get("span_name")}|'
             f'{r["metric"].get("status_code")}': float(r["value"][1]) for r in result}
@@ -74,6 +79,7 @@ def wait_span_counters(before: dict, settle_s: float = 6, limit_s: float = 30) -
 
 
 def service_delta(before: dict, after: dict) -> dict:
+    """Per-service calls and errors between two counter snapshots (ignores flagd and tiny deltas)."""
     out: dict[str, dict] = {}
     for key, value in after.items():
         service, _span, status = key.split("|")
@@ -88,6 +94,7 @@ def service_delta(before: dict, after: dict) -> dict:
 
 
 def counter_delta(before: dict, after: dict, limit: int = 30) -> list[dict]:
+    """List the ERROR span counters that grew between two snapshots, largest first (flagd excluded)."""
     rows = []
     for key, value in after.items():
         delta = value - before.get(key, 0.0)
@@ -100,6 +107,9 @@ def counter_delta(before: dict, after: dict, limit: int = 30) -> list[dict]:
 
 # ------------------------------------------------------------------- traces
 def failed_traces(items: list[tuple[str, str]]) -> list[dict]:
+    """Fetch each failed request's trace from Jaeger and summarise its error spans, innermost first;
+    marks traces that were not found.
+    """
     out = []
     for endpoint, trace_id in items:
         summary = TELEMETRY.trace(trace_id)
@@ -145,6 +155,9 @@ def service_logs(service: str, since_iso: str, limit: int = 6) -> list[dict]:
 
 
 def _parse(line: str) -> tuple[str, str]:
+    """Extract (message, level) from one container log line, whether JSON (pino/zap style) or plain
+    text.
+    """
     try:
         doc = json.loads(line)
         if not isinstance(doc, dict):
@@ -165,6 +178,9 @@ def _parse(line: str) -> tuple[str, str]:
 
 # ------------------------------------------------------------------- source
 def _service_dir(service: str) -> Path:
+    """Resolve a service's source directory inside the pinned upstream checkout, refusing anything
+    outside it.
+    """
     path = (UPSTREAM / service).resolve()
     if UPSTREAM.resolve() not in path.parents or not path.is_dir():
         raise PermissionError(f"no source for {service}")
@@ -172,6 +188,9 @@ def _service_dir(service: str) -> Path:
 
 
 def _safe(rel: str) -> Path:
+    """Resolve a source file path inside the pinned upstream checkout, refusing paths outside it or
+    non-source files.
+    """
     path = (UPSTREAM / rel).resolve()
     if UPSTREAM.resolve() not in path.parents or not path.is_file():
         raise PermissionError(f"{rel} is not an application source file")
@@ -181,6 +200,9 @@ def _safe(rel: str) -> Path:
 
 
 def list_source(service: str) -> list[str]:
+    """List up to 60 application source files of a service (no tests, generated or vendored code),
+    relative to src/.
+    """
     root = _service_dir(service)
     files = [p for p in root.rglob("*") if p.is_file() and p.suffix in SOURCE_EXT
              and not SKIP_PARTS & set(p.relative_to(root).parts) and "_pb" not in p.name
@@ -189,6 +211,9 @@ def list_source(service: str) -> list[str]:
 
 
 def read_source(rel: str, start: int = 1, lines: int = 120) -> str:
+    """Return numbered lines of an application source file (at most 200), with a header showing the
+    range.
+    """
     text = _safe(rel).read_text(errors="replace").splitlines()
     start = max(1, start)
     chunk = text[start - 1:start - 1 + min(lines, 200)]
@@ -197,6 +222,9 @@ def read_source(rel: str, start: int = 1, lines: int = 120) -> str:
 
 
 def search_source(service: str, pattern: str) -> list[str]:
+    """Regex search (case-insensitive) through a service's source files; returns up to 25
+    'file:line: text' hits.
+    """
     try:
         rx = re.compile(pattern, re.I)
     except re.error:

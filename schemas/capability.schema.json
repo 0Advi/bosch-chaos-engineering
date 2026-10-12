@@ -142,6 +142,7 @@
       "$ref": "#/$defs/AdapterKind"
     },
     "adapter_config": {
+      "additionalProperties": true,
       "description": "Fixed operator-owned settings; never supplied by a plan or model.",
       "title": "Adapter Config",
       "type": "object"
@@ -238,9 +239,6 @@
     "schema_version": {
       "const": "1.0.0",
       "default": "1.0.0",
-      "enum": [
-        "1.0.0"
-      ],
       "title": "Schema Version",
       "type": "string"
     },

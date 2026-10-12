@@ -47,19 +47,24 @@ async def settle(log: Log, n: int):
 
 
 class Log:
+    """Wall-clock event log for the showcase recordings."""
     def __init__(self):
+        """Start with no events and no recordings."""
         self.events, self.starts = [], {}
 
     def start(self, video: str):
+        """Mark when a video recording started."""
         self.starts[video] = time.time()
 
     def add(self, video: str, kind: str, **data):
+        """Log an event at the current time in a video and print it."""
         t = round(time.time() - self.starts[video], 2)
         self.events.append({"video": video, "t": t, "kind": kind, **data})
         print(f"[{video:9} {t:7.1f}s] {kind} {json.dumps(data)[:150]}", flush=True)
 
 
 async def scroll(page, selector: str):
+    """Smoothly scroll an element to the top of the view."""
     await page.evaluate(f"document.querySelector('{selector}')?.scrollIntoView({{behavior:'smooth', block:'start'}})")
 
 
@@ -71,10 +76,12 @@ async def show_products(shop):
 
 
 async def phase(lab) -> str | None:
+    """The dashboard's current experiment phase (None when idle)."""
     return await lab.evaluate("phaseClock ? phaseClock.name : null")
 
 
 async def wait_for(lab, predicate: str, timeout: float) -> bool:
+    """Poll a JavaScript predicate in the page until true or timeout."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if await lab.evaluate(predicate):
@@ -84,6 +91,9 @@ async def wait_for(lab, predicate: str, timeout: float) -> bool:
 
 
 async def place_order(shop, log: Log, label: str, n: int) -> str:
+    """Click Place order in the shop and wait (up to 18 s) for the result, logging success or
+    failure.
+    """
     await shop.locator('[data-cy="checkout-place-order"]').scroll_into_view_if_needed()
     await shop.wait_for_timeout(800)
     log.add("shop", "place_order_click", label=label, n=n)
@@ -98,6 +108,9 @@ async def place_order(shop, log: Log, label: str, n: int) -> str:
 
 
 async def scenario(lab, shop, log: Log, n: int, spec: dict, fault_s: int):
+    """Record one scenario: select it, start it, show the shop failing during the fault, then
+    recovery and the AI analysis.
+    """
     sid, target = spec["sid"], spec["target"]
     # 1. Select on the dashboard; the "See it in the shop" panel explains where to look.
     await lab.evaluate(f"""async () => {{ pickScenario('{sid}', '{target}', '{spec['variant']}');
@@ -199,6 +212,7 @@ async def scenario(lab, shop, log: Log, n: int, spec: dict, fault_s: int):
 
 
 async def main():
+    """Record the dashboard and shop for the three showcase scenarios."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", default="artifacts/showcase-video")
     parser.add_argument("--fault", type=int, default=35)

@@ -26,25 +26,33 @@ class BlindingError(ValueError):
 
 @dataclass
 class EvidenceBundle:
+    """Blind evidence for diagnosis: observable items with stable ids, signals that could not be
+    collected, and collection notes.
+    """
     items: list[dict]
     missing: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
     def ids(self) -> set[str]:
+        """The ids of all evidence items."""
         return {i["id"] for i in self.items}
 
     def by_id(self, item_id: str) -> Optional[dict]:
+        """The evidence item with this id, or None."""
         return next((i for i in self.items if i["id"] == item_id), None)
 
     def canonical(self) -> str:
+        """Deterministic JSON of the bundle, used for hashing and blinding checks."""
         return json.dumps({"items": self.items, "missing": self.missing, "notes": self.notes},
                           sort_keys=True, default=str)
 
     @property
     def sha256(self) -> str:
+        """Hash of the canonical bundle, recorded with each diagnosis."""
         return hashlib.sha256(self.canonical().encode()).hexdigest()
 
     def as_prompt(self) -> str:
+        """Render the bundle as the tagged evidence block sent to the model."""
         lines = ["<evidence>"]
         for item in self.items:
             lines.append(json.dumps(item, sort_keys=True, default=str))
@@ -56,15 +64,20 @@ class EvidenceBundle:
 
     @classmethod
     def from_dict(cls, data: dict) -> "EvidenceBundle":
+        """Rebuild a bundle from its saved dict form."""
         return cls(items=list(data["items"]), missing=list(data.get("missing", [])),
                    notes=list(data.get("notes", [])))
 
 
 def scenario_terms() -> list[str]:
+    """Words that would reveal the injected scenario (flag names and capability ids), used to keep
+    evidence blind.
+    """
     return sorted(set(FLAG_TERMS) | set(Catalog().by_id))
 
 
 def assert_blind(bundle: EvidenceBundle) -> None:
+    """Raise BlindingError if the evidence mentions any scenario term."""
     text = bundle.canonical()
     leaked = [t for t in scenario_terms() if t in text]
     if leaked:
@@ -72,6 +85,7 @@ def assert_blind(bundle: EvidenceBundle) -> None:
 
 
 def _attempt(event: Event) -> dict:
+    """The observable fields of one checkout attempt event."""
     d = event.data
     return {k: d.get(k) for k in ("phase", "http_status", "error_code", "latency_ms", "matched",
                                    "cart_items_after", "trace_id", "transport_error") if k in d}
@@ -82,6 +96,7 @@ def from_run(record: dict, events: list[Event], telemetry=None, max_traces: int 
     items, n = [], 0
 
     def add(kind: str, at, data: dict) -> dict:
+        """Append one sanitized evidence item with the next id and return it."""
         nonlocal n
         n += 1
         item = {"id": f"ev-{n:03d}", "kind": kind, "at": at.isoformat() if hasattr(at, "isoformat") else at,

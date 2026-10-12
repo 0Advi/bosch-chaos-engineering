@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def build():
+    """Cross-compile the payment health-check helper with Go for the Docker host's CPU architecture."""
     go = shutil.which("go") or "/usr/local/go/bin/go"
     architecture = subprocess.check_output(
         ["docker", "info", "--format", "{{.Architecture}}"], text=True).strip()

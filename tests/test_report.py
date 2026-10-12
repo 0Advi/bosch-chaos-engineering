@@ -18,6 +18,7 @@ from tests.fake_env import FakeEnvironment, fast_limits, make_plan
 
 @pytest.fixture
 def flag_file(tmp_path):
+    """Fixture: a temp copy of the committed flag file."""
     path = tmp_path / "flagd" / "demo.flagd.json"
     path.parent.mkdir()
     shutil.copy(FLAG_FILE, path)
@@ -25,6 +26,7 @@ def flag_file(tmp_path):
 
 
 def run(tmp_path, flag_file, plan=None, **env_options):
+    """Execute a fake live run and return its store and summary."""
     store = RunStore(tmp_path / "results" / "runs.sqlite3")
     summary = runner.execute(plan or make_plan(), live=True, env=FakeEnvironment(flag_file, **env_options),
                              store=store, limits=fast_limits(), gate_check=lambda p, c: [],
@@ -33,6 +35,7 @@ def run(tmp_path, flag_file, plan=None, **env_options):
 
 
 def test_completed_run_exports_evidence_and_report(tmp_path, flag_file):
+    """A completed run exports run.json, events, report JSON and markdown."""
     store, summary = run(tmp_path, flag_file)
     out = tmp_path / "results" / summary["run_id"]
     assert summary["evidence"] == str(out)
@@ -49,6 +52,7 @@ def test_completed_run_exports_evidence_and_report(tmp_path, flag_file):
 
 
 def test_report_is_reproducible_from_files_without_the_store(tmp_path, flag_file):
+    """The report can be rebuilt from the exported files alone and matches."""
     store, summary = run(tmp_path, flag_file)
     out = tmp_path / "results" / summary["run_id"]
     from_db = build_report(store.get(summary["run_id"]), store.events(summary["run_id"]))
@@ -62,6 +66,7 @@ def test_report_is_reproducible_from_files_without_the_store(tmp_path, flag_file
 
 
 def test_tampered_evidence_is_detected(tmp_path, flag_file):
+    """Changing an exported event is detected through the digest."""
     _, summary = run(tmp_path, flag_file)
     out = tmp_path / "results" / summary["run_id"]
     lines = (out / "events.jsonl").read_text().splitlines()
@@ -72,6 +77,7 @@ def test_tampered_evidence_is_detected(tmp_path, flag_file):
 
 
 def test_stop_reasons_and_cleanup_status_are_reported(tmp_path, flag_file):
+    """Stop reasons and cleanup status appear in the report."""
     _, aborted = run(tmp_path / "a", flag_file, protected_fail_when_faulted=True, plan=make_plan(duration=20))
     report = report_from_dir(tmp_path / "a" / "results" / aborted["run_id"])
     assert (report.state.value, report.stop_reason.value) == ("ABORTED", "protected_path_degraded")
@@ -86,6 +92,7 @@ def test_stop_reasons_and_cleanup_status_are_reported(tmp_path, flag_file):
 
 
 def test_missing_samples_and_baseline_are_explicit(tmp_path, flag_file):
+    """Missing samples and a missing baseline are stated in the report."""
     store = RunStore(tmp_path / "results" / "runs.sqlite3")
     summary = runner.execute(make_plan(duration=0), live=True, env=FakeEnvironment(flag_file), store=store,
                              limits=fast_limits(min_affected_samples=50), gate_check=lambda p, c: [],
@@ -99,6 +106,7 @@ def test_missing_samples_and_baseline_are_explicit(tmp_path, flag_file):
 
 
 def test_baseline_reference_is_linked_by_hash(tmp_path, flag_file):
+    """The report links the plan's baseline by its hash."""
     now = datetime.now(timezone.utc)
     stats = [ProbeStats(probe=p, attempts=30, failures=0, failure_rate=0, p95_ms=2800.0, p99_ms=3000.0)
              for p in ("POST /api/checkout", "GET /", "GET /api/products", "POST /api/cart", "GET /api/cart")]
@@ -119,6 +127,7 @@ def test_baseline_reference_is_linked_by_hash(tmp_path, flag_file):
 
 
 def test_export_refuses_unsanitizable_fixture_data(tmp_path, flag_file):
+    """Export refuses events with data that cannot be sanitized (like an address)."""
     store, summary = run(tmp_path, flag_file)
     store.emit(summary["run_id"], "note", operator_note="shipped to 1600 Amphitheatre Parkway")
     with pytest.raises(ValueError, match="sanitization failed"):
@@ -130,6 +139,7 @@ def test_export_refuses_unsanitizable_fixture_data(tmp_path, flag_file):
 
 
 def test_run_json_omits_raw_flag_file_contents(tmp_path, flag_file):
+    """run.json leaves out the raw flag-file text."""
     _, summary = run(tmp_path, flag_file)
     record = json.loads((tmp_path / "results" / summary["run_id"] / "run.json").read_text())
     change = record["recovery"]["change"]

@@ -9,8 +9,8 @@
           "type": "integer"
         },
         "failure_rate": {
-          "maximum": 1.0,
-          "minimum": 0.0,
+          "maximum": 1,
+          "minimum": 0,
           "title": "Failure Rate",
           "type": "number"
         },
@@ -135,12 +135,14 @@
     },
     "controls": {
       "items": {
+        "additionalProperties": true,
         "type": "object"
       },
       "title": "Controls",
       "type": "array"
     },
     "criteria": {
+      "additionalProperties": true,
       "title": "Criteria",
       "type": "object"
     },
@@ -155,6 +157,7 @@
       "type": "string"
     },
     "health": {
+      "additionalProperties": true,
       "title": "Health",
       "type": "object"
     },
@@ -181,6 +184,7 @@
       "type": "array"
     },
     "resources": {
+      "additionalProperties": true,
       "title": "Resources",
       "type": "object"
     },
@@ -190,9 +194,6 @@
     "schema_version": {
       "const": "1.0.0",
       "default": "1.0.0",
-      "enum": [
-        "1.0.0"
-      ],
       "title": "Schema Version",
       "type": "string"
     },
@@ -202,6 +203,7 @@
       "type": "string"
     },
     "telemetry": {
+      "additionalProperties": true,
       "title": "Telemetry",
       "type": "object"
     },
@@ -210,6 +212,7 @@
       "type": "string"
     },
     "workload": {
+      "additionalProperties": true,
       "title": "Workload",
       "type": "object"
     }

@@ -22,6 +22,7 @@ SANDBOX = SandboxRef(docker_context="dedicated", daemon_id="DAEMON-1", compose_p
 
 @pytest.fixture
 def criteria():
+    """Fixture: baseline criteria with shortened waits for tests."""
     c = load_criteria()
     c["workload"]["trace_wait_seconds"] = 2
     return c
@@ -29,11 +30,13 @@ def criteria():
 
 @pytest.fixture
 def fake():
+    """Fixture: a running fake shop."""
     with FakeShop() as shop:
         yield shop
 
 
 def make_env(fake, tmp_path, logs=lambda tid: {"hits": 1, "excerpts": []}, runtime=None):
+    """A baseline environment pointing at the fake shop, with fake logs and runtime."""
     flag = tmp_path / "demo.flagd.json"
     if not flag.exists():
         shutil.copy(FLAG_FILE, flag)
@@ -44,10 +47,12 @@ def make_env(fake, tmp_path, logs=lambda tid: {"hits": 1, "excerpts": []}, runti
 
 
 def run(env, criteria, attempts=6):
+    """Measure a short baseline."""
     return measure(env, criteria, attempts=attempts, duration_seconds=0.3, warmup=1)
 
 
 def test_healthy_baseline_is_measured_and_saved(fake, tmp_path, criteria):
+    """A healthy shop gives a healthy, saved baseline with stats per probe."""
     baseline, path = run(make_env(fake, tmp_path), criteria)
     assert baseline.healthy, baseline.blocking
     checkout = baseline.probe("POST /api/checkout")
@@ -64,6 +69,7 @@ def test_healthy_baseline_is_measured_and_saved(fake, tmp_path, criteria):
 
 
 def test_failures_are_counted_and_block_execution(fake, tmp_path, criteria):
+    """Failed requests are counted and make the baseline blocking."""
     fake.fail_every = 3
     baseline, path = run(make_env(fake, tmp_path), criteria)
     assert not baseline.healthy and path.exists()                       # published anyway
@@ -73,6 +79,7 @@ def test_failures_are_counted_and_block_execution(fake, tmp_path, criteria):
 
 
 def test_missing_telemetry_blocks_instead_of_passing(fake, tmp_path, criteria):
+    """Missing traces, metrics or logs block the baseline instead of passing."""
     fake.drop_traces, fake.metrics_missing = True, True
     baseline, _ = run(make_env(fake, tmp_path, logs=lambda tid: None), criteria, attempts=2)
     assert any("trace coverage" in b for b in baseline.blocking)
@@ -81,6 +88,7 @@ def test_missing_telemetry_blocks_instead_of_passing(fake, tmp_path, criteria):
 
 
 def test_stale_metrics_and_restarts_block(fake, tmp_path, criteria):
+    """Stale metrics and container restarts block the baseline."""
     fake.metric_age = 900
     baseline, _ = run(make_env(fake, tmp_path, runtime=FakeRuntime(restarts_after=1)), criteria, attempts=2)
     assert any("s old" in b for b in baseline.blocking)
@@ -88,6 +96,7 @@ def test_stale_metrics_and_restarts_block(fake, tmp_path, criteria):
 
 
 def test_leaked_card_data_is_never_written(fake, tmp_path, criteria):
+    """Card data in log excerpts aborts the baseline before anything is written."""
     leaky = lambda tid: {"hits": 1, "excerpts": [{"body": "charged 4432-8015-6152-0454"}]}
     with pytest.raises(ValueError, match="sanitization failed"):
         run(make_env(fake, tmp_path, logs=leaky), criteria, attempts=1)
@@ -95,6 +104,7 @@ def test_leaked_card_data_is_never_written(fake, tmp_path, criteria):
 
 
 def test_baseline_usability_gates(fake, tmp_path, criteria):
+    """A baseline is unusable when stale, for another revision or flag file, or tampered with."""
     env = make_env(fake, tmp_path)
     _, path = run(env, criteria, attempts=2)
     assert check.usable_blockers(path, "DAEMON-1", env.flag_file, 24) == []
@@ -109,6 +119,7 @@ def test_baseline_usability_gates(fake, tmp_path, criteria):
 
 
 def two_baselines(fake, tmp_path, criteria):
+    """Measure two baselines for policy derivation."""
     env = make_env(fake, tmp_path)
     a, pa = run(env, criteria)
     time.sleep(1.1)                                                    # distinct baseline IDs
@@ -117,6 +128,7 @@ def two_baselines(fake, tmp_path, criteria):
 
 
 def test_policy_derived_from_reproducible_baselines(fake, tmp_path, criteria):
+    """Policy gates are derived from two reproducible healthy baselines."""
     baselines, paths = two_baselines(fake, tmp_path, criteria)
     criteria["reproducibility"]["max_checkout_p95_ratio"] = 100        # loopback latencies are noisy
     derived = policy.derive(baselines, criteria, paths)
@@ -134,6 +146,7 @@ def test_policy_derived_from_reproducible_baselines(fake, tmp_path, criteria):
 
 
 def test_policy_refuses_single_unhealthy_or_irreproducible_input(fake, tmp_path, criteria):
+    """Policy derivation refuses one baseline, unhealthy ones or ones that disagree."""
     baselines, paths = two_baselines(fake, tmp_path, criteria)
     with pytest.raises(policy.PolicyError, match="at least two"):
         policy.derive(baselines[:1], criteria, paths[:1])
@@ -149,6 +162,7 @@ def test_policy_refuses_single_unhealthy_or_irreproducible_input(fake, tmp_path,
 
 
 def test_future_or_under_sampled_baseline_cannot_enable_live_execution(fake, tmp_path, criteria):
+    """Future-dated or under-sampled baselines cannot enable live runs."""
     env = make_env(fake, tmp_path)
     baseline, path = measure(env, criteria, attempts=2, duration_seconds=0, warmup=0)
     # The short capture is useful for diagnostics, but cannot authorize the live profile.

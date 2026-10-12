@@ -54,6 +54,7 @@ TERMINAL_VALUES = tuple(s.value for s in TERMINAL)
 
 
 def owner_pid(owner: Optional[str]) -> Optional[int]:
+    """The process id encoded at the end of an owner string ('host:pid'), or None."""
     try:
         return int(owner.rsplit(":", 1)[1]) if owner else None
     except (IndexError, ValueError):
@@ -61,6 +62,7 @@ def owner_pid(owner: Optional[str]) -> Optional[int]:
 
 
 def pid_alive(pid: Optional[int]) -> bool:
+    """Whether a process with this pid exists."""
     if not pid:
         return False
     try:
@@ -73,19 +75,27 @@ def pid_alive(pid: Optional[int]) -> bool:
 
 
 class RunInProgress(RuntimeError):
+    """Raised when a new run is requested while another run is still active."""
     def __init__(self, run_id: str, state: str):
+        """Record which run is active and its state."""
         super().__init__(f"run {run_id} is {state}; only one run may be active")
         self.run_id, self.state = run_id, state
 
 
 class DuplicateRequest(RuntimeError):
+    """Raised when a request id was already used to create a run."""
     def __init__(self, request_id: str, run_id: str):
+        """Record the request id and the run it created."""
         super().__init__(f"request {request_id} already created run {run_id}")
         self.request_id, self.run_id = request_id, run_id
 
 
 class RunStore:
+    """SQLite store (WAL, full sync) for runs and their append-only event log; every state change is
+    a checked transaction.
+    """
     def __init__(self, path: Path):
+        """Open or create the database and its schema."""
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
         self.db = sqlite3.connect(path, timeout=30, isolation_level=None, check_same_thread=False)
@@ -96,6 +106,7 @@ class RunStore:
 
     @contextmanager
     def tx(self) -> Iterator[sqlite3.Connection]:
+        """Context manager for an immediate (write-locked) transaction that rolls back on error."""
         self.db.execute("BEGIN IMMEDIATE")
         try:
             yield self.db
@@ -106,6 +117,7 @@ class RunStore:
 
     # ---------------------------------------------------------------- reads
     def get(self, run_id: str) -> dict:
+        """One run as a dict, with its JSON columns parsed (KeyError if unknown)."""
         row = self.db.execute("SELECT * FROM runs WHERE run_id = ?", (run_id,)).fetchone()
         if row is None:
             raise KeyError(run_id)
@@ -115,17 +127,20 @@ class RunStore:
         return run
 
     def active_runs(self) -> list[dict]:
+        """All runs not yet in a terminal state, oldest first."""
         rows = self.db.execute(
             f"SELECT run_id FROM runs WHERE state NOT IN ({','.join('?' * len(TERMINAL_VALUES))})"
             " ORDER BY created_at", TERMINAL_VALUES).fetchall()
         return [self.get(r["run_id"]) for r in rows]
 
     def recent_runs(self, limit: int = 20) -> list[dict]:
+        """The most recent runs (1-200)."""
         rows = self.db.execute("SELECT run_id FROM runs ORDER BY created_at DESC LIMIT ?",
                                (max(1, min(limit, 200)),)).fetchall()
         return [self.get(r["run_id"]) for r in rows]
 
     def events(self, run_id: str, after_seq: int = 0) -> list[Event]:
+        """A run's events after a sequence number, in order."""
         rows = self.db.execute("SELECT body FROM events WHERE run_id = ? AND seq > ? ORDER BY seq",
                                (run_id, after_seq)).fetchall()
         return [Event.model_validate_json(r["body"]) for r in rows]
@@ -151,6 +166,7 @@ class RunStore:
         return self.get(run_id)
 
     def _append(self, db, run_id: str, type_: str, state: S, reason: Optional[R], data: dict) -> Event:
+        """Append the next event of a run inside a transaction and bump its last sequence number."""
         seq = db.execute("SELECT last_seq FROM runs WHERE run_id = ?", (run_id,)).fetchone()["last_seq"] + 1
         event = Event(run_id=run_id, seq=seq, at=datetime.now(timezone.utc), type=type_,
                       state=state, stop_reason=reason, data=json.loads(json.dumps(data, default=str)))
@@ -160,6 +176,7 @@ class RunStore:
         return event
 
     def transition(self, run_id: str, target: S, reason: Optional[R] = None, **data) -> Event:
+        """Move a run to a new state if the lifecycle allows it, recording a state_changed event."""
         with self.tx() as db:
             row = db.execute("SELECT state, stop_reason FROM runs WHERE run_id = ?", (run_id,)).fetchone()
             current = S(row["state"])
@@ -170,12 +187,14 @@ class RunStore:
             return self._append(db, run_id, "state_changed", target, reason, data)
 
     def emit(self, run_id: str, type_: str, **data) -> Event:
+        """Record a non-state event for a run (in its current state)."""
         with self.tx() as db:
             row = db.execute("SELECT state, stop_reason FROM runs WHERE run_id = ?", (run_id,)).fetchone()
             reason = R(row["stop_reason"]) if row["stop_reason"] else None
             return self._append(db, run_id, type_, S(row["state"]), reason, data)
 
     def update(self, run_id: str, **fields) -> None:
+        """Update whitelisted run columns (JSON columns are serialized)."""
         allowed = {"recovery_json", "result_json", "fault_deadline_at", "hard_deadline_at",
                    "watchdog_pid", "controller_pid"}
         if not fields or set(fields) - allowed:
@@ -186,9 +205,11 @@ class RunStore:
                        (*values, run_id))
 
     def heartbeat(self, run_id: str) -> None:
+        """Record that the owning controller is still alive."""
         self.db.execute("UPDATE runs SET heartbeat_at = ? WHERE run_id = ?", (time.time(), run_id))
 
     def request_abort(self, run_id: str) -> bool:
+        """Ask an active run to abort; returns False if it is already terminal."""
         with self.tx() as db:
             cur = db.execute(
                 f"UPDATE runs SET abort_requested = 1 WHERE run_id = ? AND state NOT IN "
@@ -214,4 +235,5 @@ class RunStore:
             return False
 
     def release_restorer(self, run_id: str) -> None:
+        """Clear the run's restorer so another process may take over restoration."""
         self.db.execute("UPDATE runs SET restorer = NULL WHERE run_id = ?", (run_id,))

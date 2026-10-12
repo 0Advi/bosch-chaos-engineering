@@ -13,6 +13,7 @@ WEIGHTS = {"availability": 0.30, "containment": 0.25, "recovery": 0.20, "error_h
 
 
 def _p95(values):
+    """95th percentile of a list (None if empty)."""
     if not values:
         return None
     ordered = sorted(values)
@@ -20,6 +21,7 @@ def _p95(values):
 
 
 def _p50(values):
+    """Median of a list (None if empty)."""
     if not values:
         return None
     ordered = sorted(values)
@@ -27,6 +29,9 @@ def _p50(values):
 
 
 def score(records: list[dict], blast: dict, time_to_recover_s: float | None, aborted: bool) -> dict:
+    """Compute the deterministic 0-100 resilience score of a run from its requests, blast radius,
+    recovery time and abort status, with the per-factor breakdown and supporting facts.
+    """
     fault = [r for r in records if r["phase"] == "fault"]
     base = [r for r in records if r["phase"] == "baseline"]
     # Mean per-path success, so a path whose requests hang (few samples) weighs as much as a fast one.
@@ -78,4 +83,5 @@ def score(records: list[dict], blast: dict, time_to_recover_s: float | None, abo
 
 
 def grade(total: float) -> str:
+    """Letter grade for a score: A >= 90, B >= 75, C >= 60, D >= 40, else F."""
     return "A" if total >= 90 else "B" if total >= 75 else "C" if total >= 60 else "D" if total >= 40 else "F"

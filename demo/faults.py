@@ -30,6 +30,7 @@ _LIVE: set = set()          # running StallCycle / TrafficSpike loops; restore_a
 
 # ------------------------------------------------------------------ journal
 def _journal_read() -> list[dict]:
+    """Read the list of active faults (their undo records); an empty list if there is none."""
     try:
         text = JOURNAL.read_text()
     except OSError:
@@ -58,21 +59,27 @@ def _journal_write(entries: list[dict]):
 
 
 def _journal_add(entry: dict):
+    """Append one undo record to the journal (thread-safe)."""
     with _lock:
         _journal_write(_journal_read() + [entry])
 
 
 def _journal_remove(entry_id: str):
+    """Remove one undo record from the journal by id (thread-safe)."""
     with _lock:
         _journal_write([e for e in _journal_read() if e["id"] != entry_id])
 
 
 def active_faults() -> list[dict]:
+    """The undo records of all faults currently applied."""
     return _journal_read()
 
 
 # ------------------------------------------------------------------- docker
 def docker(*args: str, timeout: float = 30, check: bool = True) -> str:
+    """Run a docker CLI command and return its stdout; raises with the error text if it fails
+    (unless check=False).
+    """
     result = subprocess.run(["docker", *args], capture_output=True, text=True, timeout=timeout)
     if check and result.returncode != 0:
         raise RuntimeError(f"docker {' '.join(args[:2])} failed: {result.stderr.strip()[:300]}")
@@ -80,6 +87,7 @@ def docker(*args: str, timeout: float = 30, check: bool = True) -> str:
 
 
 def container(service: str) -> str:
+    """Return the container id of a sandbox service (exactly one expected)."""
     ids = docker("ps", "-aq", "--filter", f"label=com.docker.compose.project={PROJECT}",
                  "--filter", f"label=com.docker.compose.service={service}").split()
     if len(ids) != 1:
@@ -88,6 +96,9 @@ def container(service: str) -> str:
 
 
 def container_state(service: str) -> dict:
+    """Summarise a service container: status, running/paused, OOM kill, exit code, restarts, health,
+    start time, memory limit and networks.
+    """
     try:
         doc = json.loads(docker("inspect", container(service)))[0]
     except Exception as error:
@@ -127,10 +138,12 @@ def live_flags() -> dict | None:
 
 
 def _served(flag: str) -> str | None:
+    """The variant flagd currently serves for one flag."""
     return (live_flags() or {}).get(flag)
 
 
 def _wait_served(flag: str, variant: str, limit_s: float = 10) -> bool:
+    """Poll flagd until it serves the given variant for the flag, or the time limit passes."""
     deadline = time.monotonic() + limit_s
     while time.monotonic() < deadline:
         if _served(flag) == variant:
@@ -141,6 +154,9 @@ def _wait_served(flag: str, variant: str, limit_s: float = 10) -> bool:
 
 # ----------------------------------------------------------------- adapters
 def _apply_flag(flag: str, variant: str) -> dict:
+    """Turn a flagd fault on: journal the flag's prior definition, rewrite the flag file (targeting
+    rules included) and verify flagd serves the new variant.
+    """
     doc = json.loads(FLAG_FILE.read_text())
     entry = doc["flags"][flag]
     if variant not in entry["variants"]:
@@ -165,6 +181,9 @@ def _apply_flag(flag: str, variant: str) -> dict:
 
 
 def _undo_flag(undo: dict) -> str:
+    """Restore a flag's prior definition and verify flagd serves it; rewrites the file, then
+    restarts flagd as a last resort if it does not pick the change up.
+    """
     doc = json.loads(FLAG_FILE.read_text())
     doc["flags"][undo["flag"]] = undo["prior_entry"]
     text = json.dumps(doc, indent=2) + "\n"
@@ -183,6 +202,9 @@ def _undo_flag(undo: dict) -> str:
 
 
 def _container_fault(kind: str, service: str, variant: str) -> dict:
+    """Apply a container fault (kill, pause, network disconnect or CPU quota) to an allowed service,
+    journaling how to undo it first.
+    """
     if service not in CONTAINER_TARGETS:
         raise PermissionError(f"{service} is not an allowed fault target")
     cid = container(service)
@@ -212,6 +234,9 @@ def _container_fault(kind: str, service: str, variant: str) -> dict:
 
 
 def _undo_container(undo: dict) -> str:
+    """Undo a container fault; a container that was replaced in the meantime counts as already
+    restored.
+    """
     try:
         return _undo_container_inner(undo)
     except RuntimeError as error:
@@ -222,6 +247,9 @@ def _undo_container(undo: dict) -> str:
 
 
 def _undo_container_inner(undo: dict) -> str:
+    """Undo one container fault: start, unpause, reconnect with the original aliases (reporting an
+    IP change) or restore the CPU quota.
+    """
     cid = undo["container"]
     if undo["kind"] == "kill":
         docker("start", cid, timeout=60)
@@ -249,10 +277,16 @@ DB_MARK = "chaos_demo_overload"
 
 
 def _psql(cid: str, sql: str) -> str:
+    """Run one SQL statement in the astronomy-db container as postgres and return the unaligned
+    output.
+    """
     return docker("exec", cid, "psql", "-U", "postgres", "-tAc", sql)
 
 
 def _heavy_count(cid: str) -> int:
+    """Number of running database sessions started by the DB-overload fault (identified by a marker
+    comment).
+    """
     out = _psql(cid, f"SELECT count(*) FROM pg_stat_activity WHERE query LIKE '%{DB_MARK}%' "
                      "AND pid <> pg_backend_pid()")
     return int(out.strip() or 0)
@@ -326,6 +360,7 @@ class StallCycle:
     unpauses."""
 
     def __init__(self, service: str, stall_s: float, run_s: float = 0.5):
+        """Prepare a pause/unpause cycle for an allowed service and its undo record."""
         if service not in CONTAINER_TARGETS:
             raise PermissionError(f"{service} is not an allowed fault target")
         self.service, self.stall_s, self.run_s = service, stall_s, run_s
@@ -335,6 +370,9 @@ class StallCycle:
         self.undo = {"id": uuid4().hex, "kind": "pause", "service": service, "container": self.cid}
 
     def _loop(self):
+        """Background loop: freeze the container for stall_s, let it run for run_s, repeat until
+        stopped.
+        """
         while not self.stop.is_set():
             docker("pause", self.cid, check=False)
             self.stop.wait(self.stall_s)
@@ -342,12 +380,14 @@ class StallCycle:
             self.stop.wait(self.run_s)
 
     def start(self) -> dict:
+        """Journal the cycle (as a pause), register it as a live loop and start it."""
         _journal_add(self.undo)
         _LIVE.add(self)
         self.thread.start()
         return self.undo
 
     def halt(self):
+        """Stop the cycle, wait for the thread and always unpause the container."""
         self.stop.set()
         self.thread.join(timeout=self.stall_s + 5)
         _LIVE.discard(self)
@@ -358,11 +398,15 @@ class TrafficSpike:
     """Concurrent synthetic users hammering browse paths until stopped."""
 
     def __init__(self, users: int):
+        """Prepare a spike of the given number of concurrent synthetic users."""
         from urllib.request import urlopen
         self.users, self.stop, self.sent, self.urlopen = users, threading.Event(), 0, urlopen
         self.threads: list[threading.Thread] = []
 
     def _loop(self):
+        """One synthetic user: request home, product list, recommendations and ads in a closed loop
+        until stopped.
+        """
         paths = ["/", "/api/products?currencyCode=USD", "/api/recommendations?productIds=66VCHSJNUP&currencyCode=USD",
                  "/api/data?contextKeys=telescopes"]
         i = 0
@@ -376,12 +420,14 @@ class TrafficSpike:
             i += 1
 
     def start(self):
+        """Register the spike as a live loop and start one thread per user."""
         _LIVE.add(self)
         self.threads = [threading.Thread(target=self._loop, daemon=True) for _ in range(self.users)]
         for t in self.threads:
             t.start()
 
     def halt(self):
+        """Stop all users and wait for their threads."""
         self.stop.set()
         for t in self.threads:
             t.join(timeout=12)
@@ -393,6 +439,9 @@ class Injection:
     """Apply one scenario (possibly composite); `restore()` undoes everything in reverse."""
 
     def __init__(self, scenario: str, target: str, variant: str):
+        """Validate the scenario, target and intensity against the catalog before anything is
+        applied.
+        """
         spec = SCENARIOS[scenario]
         if variant not in spec["variants"]:
             raise ValueError(f"{scenario} has no intensity {variant}")
@@ -421,6 +470,9 @@ class Injection:
         self.owned = {e["id"] for e in _journal_read()} - before
 
     def _apply(self):
+        """Apply the scenario's mechanism(s) (flag, container fault, stall cycle, DB overload,
+        traffic spike, or a combination), keeping each undo record and a readable description.
+        """
         kind = self.spec["kind"]
         if kind == "flag":
             self.undos.append(_apply_flag(self.spec["flag"], self.variant))
@@ -457,6 +509,9 @@ class Injection:
             raise ValueError(kind)
 
     def restore(self) -> list[str]:
+        """Undo everything this injection applied, in reverse order, plus any post-restore clean-up
+        the scenario needs; returns one message per step.
+        """
         results = []
         if self.stall:
             self.stall.halt()
@@ -482,6 +537,9 @@ class Injection:
 
 
 def undo_entry(undo: dict) -> str:
+    """Undo one journaled fault and remove it from the journal; returns a message (a failed undo is
+    reported and stays journaled).
+    """
     try:
         if undo["kind"] == "flag":
             result = _undo_flag(undo)
@@ -496,6 +554,9 @@ def undo_entry(undo: dict) -> str:
 
 
 def restore_all() -> list[str]:
+    """Stop every live background loop, then undo every journaled fault (used on exit, signals, the
+    kill switch and server start).
+    """
     results = []
     for loop in list(_LIVE):            # stop re-pausing / traffic before undoing the journal
         loop.halt()
@@ -517,6 +578,7 @@ def flags_clean() -> bool:
 
 
 def wait_running(service: str, limit_s: float = 60) -> bool:
+    """Wait until a service's container is running, unpaused and healthy (if it has a health check)."""
     deadline = time.monotonic() + limit_s
     while time.monotonic() < deadline:
         state = container_state(service)

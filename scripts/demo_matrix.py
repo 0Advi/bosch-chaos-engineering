@@ -23,16 +23,21 @@ COLUMNS = ["#", "AI-proposed injection", "Category", "Why the AI chose it", "Out
 
 
 def load(name: str):
+    """Load a saved run or analysis JSON by name (None if missing)."""
     path = RUNS / name
     return json.loads(path.read_text()) if path.exists() else None
 
 
 def _top_rec(analysis: dict) -> str:
+    """The highest-priority recommendation of an analysis as one line."""
     recs = sorted((analysis.get("report") or {}).get("recommendations") or [], key=lambda r: r.get("priority", "P9"))
     return f"[{recs[0]['priority']}] {recs[0]['title']} ({recs[0]['component']})" if recs else "-"
 
 
 def rows_for(campaign: dict) -> list[dict]:
+    """One matrix row per campaign run: scenario, target, outcome, score, blast radius, recovery and
+    top recommendation.
+    """
     plan = {(e["scenario"], e["target"]): e for e in (load("plan-latest.json") or {}).get("experiments", [])}
     rows = []
     for n, rid in enumerate(campaign["runs"], 1):
@@ -71,6 +76,7 @@ def rows_for(campaign: dict) -> list[dict]:
 
 
 def to_markdown(rows, overall) -> str:
+    """The matrix as a markdown table plus the overall score."""
     lines = ["| " + " | ".join(COLUMNS) + " |", "|" + "---|" * len(COLUMNS)]
     for r in rows:
         lines.append("| " + " | ".join(str(r[c]).replace("|", "/").replace("\n", " ") for c in COLUMNS) + " |")
@@ -78,7 +84,9 @@ def to_markdown(rows, overall) -> str:
 
 
 def to_html(rows, overall, campaign_id) -> str:
+    """The matrix as a styled HTML page (for a 1920x1080 screenshot)."""
     def cell(c, v):
+        """One table cell, coloured by outcome or blast radius."""
         cls = ""
         if c == "Outcome":
             cls = "ok" if v.startswith("Completed") else "warn"
@@ -107,6 +115,7 @@ def to_html(rows, overall, campaign_id) -> str:
 
 
 async def screenshot(html_path: Path, png: Path):
+    """Render an HTML file to PNG with headless Chrome."""
     from playwright.async_api import async_playwright
     async with async_playwright() as p:
         browser = await p.chromium.launch(channel="chrome", headless=True)
@@ -117,6 +126,7 @@ async def screenshot(html_path: Path, png: Path):
 
 
 def main():
+    """Command line: build the matrix for a campaign (latest by default) as markdown, HTML and PNG."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--campaign")
     parser.add_argument("--out", default="artifacts/demo-video")

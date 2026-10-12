@@ -26,12 +26,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class WorkbenchBridge:
+    """Serves the workbench UI and its /api/workbench routes on top of the controller API."""
     assets = {"/": ("index.html", "text/html; charset=utf-8"),
               "/index.html": ("index.html", "text/html; charset=utf-8"),
               "/style.css": ("style.css", "text/css"),
               **{f"/{n}.mjs": (f"{n}.mjs", "text/javascript") for n in ("app", "api", "state")}}
 
     def __init__(self, api, *, preflight=None):
+        """Wrap the controller API, with an optional preflight result already known."""
         self.api = api
         self.lock = threading.Lock()
         self.preflight = preflight
@@ -39,6 +41,7 @@ class WorkbenchBridge:
         self.checking = False
 
     def _refresh_preflight(self):
+        """Re-run the Docker sandbox inspection in the background."""
         try:
             self.preflight = self.api.preflight(None)
         except Exception:
@@ -48,6 +51,9 @@ class WorkbenchBridge:
             self.checking = False
 
     def readiness(self):
+        """Whether live runs are allowed now: policy, sandbox spec, inspection result and active
+        runs (inspection refreshed in the background).
+        """
         # Docker inspection can take 30 seconds. Never block UI/abort requests on it.
         with self.lock:
             if not self.checking and time.monotonic() - self.preflight_at > 15:
@@ -87,6 +93,7 @@ class WorkbenchBridge:
                 "blockers": list(dict.fromkeys(blockers)), "baseline_job": baselines["job"]}
 
     def view(self, record):
+        """A run as the workbench shows it, with cleanup, recovery and links to its evidence."""
         events = self.api.store().events(record["run_id"])
         report = build_report(record, events, self.api.root)
         recovered = any(e.type == "state_changed" and e.data.get("recovered") is True for e in events)
@@ -97,6 +104,7 @@ class WorkbenchBridge:
                                   f"/api/v1/runs/{record['run_id']}/evidence"]}
 
     def detail(self, run_id):
+        """Full detail of a run: record, observations, timeline and report."""
         record = self.api._run(run_id)
         events = self.api.store().events(run_id)
         observations = [{"observation_id": f"event-{e.seq}", "probe": e.data.get("probe", e.data.get("kind", "observation")),
@@ -121,6 +129,9 @@ class WorkbenchBridge:
                 "patch_review": review, "comparison": None}
 
     def dispatch(self, method, path, req):
+        """Route one workbench request: static assets, snapshot, plan, run, abort, diagnose or
+        patch-candidate calls.
+        """
         if method == "GET" and path in self.assets:
             name, mime = self.assets[path]
             return 200, (ROOT / "workbench" / name).read_text(), mime
@@ -182,7 +193,10 @@ class WorkbenchBridge:
                 out = self.api.run_summary(run_id) if record["abort_requested"] else self.api.abort_run(run_id)
             elif action == "diagnosis":
                 class Request:
-                    def json(self): return {"diagnoser": "baseline"}
+                    """Minimal request object asking for the baseline diagnoser."""
+                    def json(self):
+                        """The request body."""
+                        return {"diagnoser": "baseline"}
                 _, out = self.api.diagnose(Request(), run_id)
             elif action == "patch":
                 out = self.prepare_candidate(run_id)
@@ -195,6 +209,9 @@ class WorkbenchBridge:
         return 200, {"ok": True, "result": out}
 
     def prepare_candidate(self, run_id):
+        """Write a patch-review file for a finished run (refused while restoration is still in
+        progress).
+        """
         record = self.api._run(run_id)
         if RunState(record["state"]) not in TERMINAL:
             raise ApiError("NOT_FINISHED", "finish restoration before preparing a candidate", status=409)

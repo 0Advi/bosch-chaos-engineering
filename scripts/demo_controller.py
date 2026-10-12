@@ -23,6 +23,7 @@ from tests.fake_env import FakeEnvironment, fast_limits, make_plan
 
 
 def main():
+    """Run a fully simulated controller demo in a temp directory (no Docker) and save its result."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--out', type=Path, default=ROOT/'artifacts/results/simulated-demo.json')
     args = parser.parse_args()

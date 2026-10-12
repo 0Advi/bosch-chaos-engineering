@@ -37,6 +37,9 @@ def graph(lookback_min: int = 60) -> dict:
 
 
 def observed_dependencies(lookback_min: int) -> list[dict]:
+    """Service-to-service call counts observed by Jaeger over the lookback window ([] if Jaeger is
+    unreachable).
+    """
     url = f"{jaeger_api()}/dependencies?endTs={int(time.time() * 1000)}&lookback={lookback_min * 60000}"
     try:
         with urlopen(url, timeout=5) as resp:
@@ -67,6 +70,7 @@ def criticality(edges: list[dict]) -> dict[str, dict]:
 
 # --------------------------------------------------------------- per-run stats
 def _p(values: list[float], q: float):
+    """Percentile q of a list (None if empty)."""
     if not values:
         return None
     ordered = sorted(values)
@@ -74,6 +78,9 @@ def _p(values: list[float], q: float):
 
 
 def endpoint_stats(records: list[dict], phase: str) -> dict:
+    """Per customer path for one phase: request count, successes, success %, median and p95 latency,
+    and failures by status.
+    """
     out = {}
     for endpoint in ENDPOINTS:
         rows = [r for r in records if r["phase"] == phase and r["endpoint"] == endpoint]
@@ -113,6 +120,10 @@ def impacted_endpoints(base: dict, fault: dict) -> dict[str, list[str]]:
 
 
 def blast_radius(target: str, edges: list[dict], base: dict, fault: dict, span_errors: dict) -> dict:
+    """Compare the fault phase with the baseline: which paths depend on the target, which were
+    impacted, which were impacted unexpectedly, which services showed errors, and whether the
+    impact stayed contained.
+    """
     expected_eps = sorted(k for k, v in ENDPOINTS.items() if target in v["services"])
     impacted = impacted_endpoints(base, fault)
     unexpected = sorted(set(impacted) - set(expected_eps))

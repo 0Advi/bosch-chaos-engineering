@@ -17,6 +17,7 @@ REQUIRED_SERVICES = ("frontend", "checkout", "payment")
 
 
 def _outcome(http_status: Optional[int], transport_error: Optional[str]) -> str:
+    """Classify a request outcome: success, http_error, timeout or not_observed."""
     if transport_error == "timeout":
         return "timeout"
     if http_status is None:

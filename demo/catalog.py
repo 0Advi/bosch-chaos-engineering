@@ -182,6 +182,9 @@ HOT_PATCH = {
 
 
 def scenario_view(sid: str, target: str | None = None) -> dict:
+    """Return a copy of a scenario with its id, the chosen (or default) target and the hypothesis
+    text filled in for that target.
+    """
     spec = dict(SCENARIOS[sid])
     spec["id"] = sid
     spec["target"] = target or spec["target"]

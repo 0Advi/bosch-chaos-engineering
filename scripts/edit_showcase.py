@@ -20,6 +20,7 @@ RUNS = Path("artifacts/demo-runs")
 
 
 def ev_first(ev, kind, n=None):
+    """The first logged event of a kind (optionally for scenario n)."""
     return next((e for e in ev if e["kind"] == kind and (n is None or e.get("n") == n)), None)
 
 
@@ -33,6 +34,9 @@ def wrap(text: str, width: int = 92) -> str:
 
 
 def build(out: Path) -> list[dict]:
+    """Plan the showcase segments from the event log: intro, then per scenario selection, fault,
+    shop impact, recovery and analysis.
+    """
     doc = json.loads((out / "events.json").read_text())
     ev, starts = doc["events"], doc["starts"]
     offset = starts["shop"] - starts["dashboard"]          # shop video starts this much later
@@ -41,10 +45,12 @@ def build(out: Path) -> list[dict]:
     segs = []
 
     def full(name, start, dur, title, caption, target=None):
+        """Add a full-screen dashboard segment, sped up to fit the target length."""
         segs.append({"name": name, "kind": "full", "src": dash, "start": start, "dur": dur,
                      "speed": max(1.0, dur / target) if target else 1.0, "title": title, "caption": caption})
 
     def side(name, start, end, target, title, caption, timer=None):
+        """Add a side-by-side dashboard and shop segment, optionally with an on-screen timer."""
         dur = max(1.0, end - start)
         seg = {"name": name, "kind": "side", "src": dash, "src2": shop, "start": start,
                "start2": max(0.0, start - offset), "dur": dur, "speed": max(1.0, dur / target),
@@ -117,6 +123,7 @@ def build(out: Path) -> list[dict]:
 
 
 def main():
+    """Command line: plan, render and concatenate the showcase video."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", default="artifacts/showcase-video")
     parser.add_argument("--max", type=float, default=178)

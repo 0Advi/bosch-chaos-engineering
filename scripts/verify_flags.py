@@ -23,10 +23,12 @@ CURL_IMAGE = "curlimages/curl:8.10.1"
 
 
 def docker(*args):
+    """Run a docker command and return its output."""
     return subprocess.run(["docker", *args], check=True, capture_output=True, text=True, timeout=60).stdout
 
 
 def container(service, project):
+    """The inspect data of the single running container of a compose service."""
     ids = docker("ps", "--quiet", "--filter", f"label=com.docker.compose.project={project}",
                  "--filter", f"label=com.docker.compose.service={service}").split()
     if len(ids) != 1:
@@ -35,6 +37,9 @@ def container(service, project):
 
 
 def check_mount(info, destination, want_rw):
+    """Make sure a container mounts the sandbox flag directory at a path, read-only or read-write as
+    expected.
+    """
     expected = FLAG_FILE.parent.resolve()
     for m in info["Mounts"]:
         if m["Destination"] == destination:
@@ -47,6 +52,7 @@ def check_mount(info, destination, want_rw):
 
 
 def evaluate(flag, network):
+    """Ask flagd (inside the sandbox network) to evaluate a flag."""
     out = docker("run", "--rm", "--network", network, CURL_IMAGE, "-s", "-X", "POST",
                  "-H", "Content-Type: application/json", "-d", '{"context":{}}',
                  f"http://flagd:8016/ofrep/v1/evaluate/flags/{flag}")
@@ -54,6 +60,7 @@ def evaluate(flag, network):
 
 
 def wait_for(flag, network, expected, timeout=15):
+    """Poll flagd until a flag has the expected value or time out."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         result = evaluate(flag, network)
@@ -64,6 +71,9 @@ def wait_for(flag, network, expected, timeout=15):
 
 
 def main():
+    """Command line: check flag mounts and, optionally, that a flag change round-trips through
+    flagd.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--runtime", action="store_true")
     parser.add_argument("--roundtrip", action="store_true")

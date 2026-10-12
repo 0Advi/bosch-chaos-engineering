@@ -23,6 +23,7 @@ METRIC_FRESHNESS_QUERIES = {
 
 
 def _tags(items) -> dict:
+    """Turn a Jaeger tag list into a dict."""
     return {t["key"]: t.get("value") for t in items or []}
 
 
@@ -56,12 +57,15 @@ def summarize_trace(trace: dict) -> dict:
 
 
 class Telemetry:
+    """Read-only access to Jaeger traces, Prometheus metrics and (optionally) indexed logs."""
     def __init__(self, jaeger_api: str, metrics_url: str, timeout: float = 5,
                  log_search: Optional[Callable[[str], Optional[dict]]] = None):
+        """Remember the Jaeger and Prometheus URLs, timeout and optional log search."""
         self.jaeger_api, self.metrics_url, self.timeout = jaeger_api.rstrip("/"), metrics_url.rstrip("/"), timeout
         self.log_search = log_search
 
     def _get(self, url: str):
+        """GET a URL and return (status, parsed JSON); network errors give (None, None)."""
         try:
             with urlopen(url, timeout=self.timeout) as resp:
                 return resp.status, json.loads(resp.read() or b"null")
@@ -80,18 +84,23 @@ class Telemetry:
 
     # ------------------------------------------------------------ metrics
     def query(self, promql: str) -> Optional[list]:
+        """Run an instant PromQL query; None if Prometheus fails."""
         status, body = self._get(f"{self.metrics_url}/api/v1/query?" + urlencode({"query": promql}))
         if status != 200 or not body or body.get("status") != "success":
             return None
         return body["data"]["result"]
 
     def metric_age_seconds(self, selector: str) -> Optional[float]:
+        """Seconds since a metric was last written (None if absent)."""
         result = self.query(f"time() - max(timestamp({selector}))")
         if not result:
             return None
         return round(float(result[0]["value"][1]), 1)
 
     def metric_freshness(self) -> dict:
+        """Age of each freshness-probe metric (payment and checkout span metrics, payment target
+        info).
+        """
         return {name: {"query": q, "age_seconds": self.metric_age_seconds(q)}
                 for name, q in METRIC_FRESHNESS_QUERIES.items()}
 
@@ -104,6 +113,7 @@ class Telemetry:
 
 
 def _pick(source: dict, *keys):
+    """First non-empty value among several nested key paths in a log document."""
     for key in keys:
         node = source
         for part in key.split("/"):
@@ -116,6 +126,9 @@ def _pick(source: dict, *keys):
 def opensearch_log_search(project: str) -> Callable[[str], Optional[dict]]:
     """Search indexed OTel logs by trace ID inside the sandbox OpenSearch container."""
     def search(trace_id: str) -> Optional[dict]:
+        """Search OpenSearch (inside the sandbox) for log records mentioning a trace id and return
+        sanitized excerpts.
+        """
         try:
             ids = subprocess.run(
                 ["docker", "ps", "--quiet", "--filter", f"label=com.docker.compose.project={project}",

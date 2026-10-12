@@ -35,10 +35,12 @@ _ABORT_REASONS = frozenset({R.MANUAL_ABORT, R.DEADLINE, R.PROTECTED_PATH_DEGRADE
 
 
 class IllegalTransition(ValueError):
+    """Raised for a run state change the lifecycle does not allow."""
     pass
 
 
 def check_transition(current: S, target: S, stop_reason: Optional[R] = None) -> None:
+    """Raise IllegalTransition unless the state change is allowed and carries a fitting stop reason."""
     if target not in TRANSITIONS[current]:
         raise IllegalTransition(f"{current.value} -> {target.value} is not allowed")
     if current == S.VERIFYING_RECOVERY:

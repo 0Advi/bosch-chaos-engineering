@@ -9,6 +9,7 @@ from .bridge import WorkbenchBridge
 
 
 def main():
+    """Start the controller API with the workbench bridge on a loopback port."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port', type=int, default=8095)
     args = parser.parse_args()

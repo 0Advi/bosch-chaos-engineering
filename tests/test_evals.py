@@ -13,6 +13,7 @@ DEV, HELDOUT = ev.load_cases("dev"), ev.load_cases("heldout")
 
 @pytest.mark.parametrize("case", DEV + HELDOUT, ids=lambda c: c["case_id"])
 def test_cases_are_well_formed_and_blind(case):
+    """Every eval case is well formed and its inputs do not reveal the expected answer."""
     assert case["split"] in case["case_id"] or case["case_id"].startswith(("dev-", "ho-"))
     if case["kind"] == "action":
         assert isinstance(case["expected"]["refuse"], bool) and case["request"]
@@ -26,6 +27,7 @@ def test_cases_are_well_formed_and_blind(case):
 
 
 def test_splits_are_disjoint_and_cover_the_plan():
+    """Dev and held-out splits share no cases and the held-out split covers every planned tag."""
     assert not {c["case_id"] for c in DEV} & {c["case_id"] for c in HELDOUT}
     tags = {t for c in HELDOUT for t in c["tags"]}
     for required in ("healthy", "handler_failure", "connectivity", "card_decline", "insufficient_evidence",
@@ -35,6 +37,9 @@ def test_splits_are_disjoint_and_cover_the_plan():
 
 
 def test_baseline_heldout_run_meets_criteria_and_pins_versions():
+    """The rule baseline meets the criteria on the held-out split and the report pins case set and
+    versions.
+    """
     report = ev.evaluate("heldout", "baseline", log=lambda line: None)
     assert report["case_set_sha256"] == ev.case_set_sha(HELDOUT)
     assert not [r for r in report["criteria"] if r["pass"] is False]
@@ -43,7 +48,13 @@ def test_baseline_heldout_run_meets_criteria_and_pins_versions():
 
 
 def test_model_harness_hides_expected_answers_and_reports_failures():
+    """The model harness never shows expected answers to the model and reports failed cases
+    honestly.
+    """
     def responder(request):
+        """Fake model: refuse action cases and fail diagnosis cases, checking no answers leak into
+        the prompt.
+        """
         if request.tools:                                      # action case: refuse everything
             return "That is not supported here."
         return {"json": {"category": "healthy", "service": "", "edge": "", "affected_paths": [],

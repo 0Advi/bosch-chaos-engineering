@@ -27,18 +27,22 @@ MAX_CALLS_PER_SESSION = 40
 
 
 class Args(BaseModel):
+    """Base for tool arguments: unknown fields are rejected."""
     model_config = ConfigDict(extra="forbid")
 
 
 class NoArgs(Args):
+    """Arguments for tools that take none."""
     pass
 
 
 class DescribeArgs(Args):
+    """Arguments: one capability id."""
     capability_id: Annotated[str, Field(max_length=64)]
 
 
 class ProposePlanArgs(Args):
+    """Arguments for proposing a plan: capability, typed parameters, duration and expected impact."""
     capability_id: Annotated[str, Field(max_length=64)]
     parameters: dict[Annotated[str, Field(max_length=32)], ParamValue] = {}
     duration_seconds: Annotated[int, Field(ge=0, le=30, strict=True)] = 15
@@ -46,20 +50,26 @@ class ProposePlanArgs(Args):
 
 
 class ValidatePlanArgs(Args):
+    """Arguments: a plan to validate."""
     plan: dict
 
 
 class RunRefArgs(Args):
+    """Arguments: a run id and an optional event sequence to read after."""
     run_id: Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9-]{1,63}$")]
     after_seq: Annotated[int, Field(ge=0)] = 0
 
 
 class RunPlanArgs(Args):
+    """Arguments: a plan to run, dry-run unless live is true."""
     plan: dict
     live: bool = False
 
 
 class Tool(BaseModel):
+    """One tool exposed to the model: name, description, argument model, whether it mutates, and its
+    handler.
+    """
     model_config = ConfigDict(arbitrary_types_allowed=True)
     name: str
     description: str
@@ -69,16 +79,24 @@ class Tool(BaseModel):
 
 
 def _ok(result):
+    """Wrap a successful tool result."""
     return {"ok": True, "result": result}
 
 
 def _err(code: str, message: str, **details):
+    """Build a tool error result with a stable code and message."""
     return {"ok": False, "error": code, "message": message, **details}
 
 
 class ToolRegistry:
+    """The bounded set of tools the agent may call; validates every call and only allows mutating
+    tools when explicitly enabled.
+    """
     def __init__(self, catalog: Optional[Catalog] = None, policy: Optional[dict] = None,
                  spec: Optional[dict] = None, controller=None, allow_mutation: bool = False):
+        """Load the catalog, policy and sandbox spec and register the read-only and (gated) mutating
+        tools.
+        """
         self.catalog = catalog or Catalog()
         self.policy = policy or load_policy()
         self.spec = spec or sandbox.load_spec()
@@ -118,6 +136,9 @@ class ToolRegistry:
                  "input_schema": t.args.model_json_schema()} for t in self.tools.values()]
 
     def dispatch(self, name: str, arguments: dict | str) -> dict:
+        """Run one tool call: enforce the call budget, tool name, argument size and schema, block
+        mutations unless allowed, and return a result or a structured error.
+        """
         self.calls += 1
         if self.calls > MAX_CALLS_PER_SESSION:
             return _err("TOOL_BUDGET_EXCEEDED", f"more than {MAX_CALLS_PER_SESSION} tool calls")
@@ -146,12 +167,17 @@ class ToolRegistry:
 
     # ------------------------------------------------------------ handlers
     def _list(self, _):
+        """Tool: list all fault capabilities with their status and parameters."""
         return {"catalog_version": self.catalog.version, "capabilities": self.catalog.summaries()}
 
     def _describe(self, args: DescribeArgs):
+        """Tool: the full contract of one capability (operator-only adapter config excluded)."""
         return self.catalog.get(args.capability_id).model_dump(mode="json", exclude={"adapter_config"})
 
     def _propose(self, args: ProposePlanArgs):
+        """Tool: build a validated, non-executing plan for a capability within its parameter and
+        duration limits.
+        """
         cap = self.catalog.plannable(args.capability_id)
         try:
             params = cap.check_parameters(args.parameters)
@@ -171,6 +197,7 @@ class ToolRegistry:
         return plan.model_dump(mode="json")
 
     def _validate(self, args: ValidatePlanArgs):
+        """Tool: validate a plan against the Plan contract and the runner's gates."""
         try:
             plan = Plan.model_validate(args.plan)
         except ValidationError as error:
@@ -181,6 +208,9 @@ class ToolRegistry:
         return {"valid": True, "capability_id": cap.id, "parameters": params}
 
     def _inspect_path(self, _):
+        """Tool: the payment path's dependency edges, source excerpt status, error categories and
+        retry rule.
+        """
         from .context import build_context, payment_edges
         import yaml
         from pathlib import Path
@@ -192,11 +222,15 @@ class ToolRegistry:
                 "retry_rule": semantics["retry_rule"]}
 
     def _service(self):
+        """The attached controller service, or an error if this session has none."""
         if self.controller is None:
             raise Unsupported("NOT_CONFIGURED", "no controller service is attached to this session")
         return self.controller
 
     def _run_plan(self, args: RunPlanArgs):
+        """Tool: dry-run an agent-requested plan, or start it live through the controller (live only
+        when mutations are allowed).
+        """
         try:
             plan = Plan.model_validate(args.plan)
         except ValidationError as error:
@@ -210,16 +244,21 @@ class ToolRegistry:
         return self._service().start_run(plan, live=True)
 
     def _get_run(self, args: RunRefArgs):
+        """Tool: summary of one run."""
         return self._service().run_summary(args.run_id)
 
     def _get_events(self, args: RunRefArgs):
+        """Tool: a run's events after a sequence number."""
         return {"events": self._service().run_events(args.run_id, args.after_seq)}
 
     def _get_report(self, args: RunRefArgs):
+        """Tool: a run's report."""
         return self._service().run_report(args.run_id)
 
     def _abort(self, args: RunRefArgs):
+        """Tool: request an abort (the controller restores and verifies)."""
         return self._service().abort_run(args.run_id)
 
     def _capture_baseline(self, _):
+        """Tool: start a baseline measurement job."""
         return self._service().start_baseline_job()

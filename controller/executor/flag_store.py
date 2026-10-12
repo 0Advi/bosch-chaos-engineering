@@ -26,6 +26,7 @@ class FlagConflict(RuntimeError):
 
 @dataclass(frozen=True)
 class FlagSnapshot:
+    """One flag's state at a moment: file hash, default variant, value and enabled state."""
     sha256: str
     flag: str
     default_variant: str
@@ -52,26 +53,35 @@ class FlagChange:
     applied_text: str
 
     def as_journal(self) -> dict:
+        """The change as a journal entry (so a watchdog can restore the exact prior bytes)."""
         return {"kind": "flag", **self.__dict__}
 
     @classmethod
     def from_journal(cls, data: dict) -> "FlagChange":
+        """Rebuild a change from its journal entry."""
         return cls(**{k: v for k, v in data.items() if k != "kind"})
 
 
 def _sha(data: bytes) -> str:
+    """SHA-256 hex digest of bytes."""
     return hashlib.sha256(data).hexdigest()
 
 
 class FlagStore:
+    """The only writer of the sandbox-owned flag file: hash-guarded, atomic, exactly reversible
+    changes.
+    """
     def __init__(self, path: Path = FLAG_FILE):
+        """Use the given flag file (deploy/flagd/demo.flagd.json by default)."""
         self.path = path
 
     def read(self) -> tuple[dict, str]:
+        """The parsed flag file and its hash."""
         raw = self.path.read_bytes()
         return json.loads(raw), _sha(raw)
 
     def snapshot(self, flag: str) -> FlagSnapshot:
+        """The current default variant, value and state of one flag."""
         doc, digest = self.read()
         entry = doc["flags"][flag]
         variant = entry["defaultVariant"]
@@ -133,6 +143,7 @@ class FlagStore:
         return {change.prior_sha256: "prior", change.applied_sha256: "applied"}.get(digest, "conflict")
 
     def apply(self, change: FlagChange) -> None:
+        """Write a prepared change, refusing if the file changed since it was prepared."""
         if self.state_of(change) != "prior":
             raise FlagConflict(f"{self.path.name} changed since the change was prepared")
         self._atomic_write(change.applied_text)
@@ -151,6 +162,9 @@ class FlagStore:
         return "restored"
 
     def _atomic_write(self, text: str) -> None:
+        """Write the whole file via a temp file and rename in the same directory, with exact bytes
+        and no newline translation.
+        """
         # Same directory => rename is atomic and visible through the dir bind mount.
         fd, tmp = tempfile.mkstemp(dir=self.path.parent, prefix=".flagd-", suffix=".json")
         try:

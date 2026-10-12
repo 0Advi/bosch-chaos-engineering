@@ -44,6 +44,7 @@ PLAN_FILE = RUNS_DIR / "plan-latest.json"
 
 
 def load_env():
+    """Load API keys and model settings from the repository's .env file if present."""
     env = ROOT / ".env"
     if env.exists():
         from dotenv import load_dotenv
@@ -54,6 +55,7 @@ class Session:
     """Single active job; events are replayable by sequence number."""
 
     def __init__(self):
+        """Start with no events and no running job."""
         self.lock = threading.Condition()
         self.events: list[dict] = []
         self.busy = False
@@ -62,17 +64,22 @@ class Session:
         self.stop = threading.Event()
 
     def emit(self, kind: str, data: dict):
+        """Append an event with the next sequence number and wake up all event-stream listeners."""
         with self.lock:
             self.events.append({"seq": len(self.events) + 1, "kind": kind, "at": time.time(), "data": data})
             self.lock.notify_all()
 
     def after(self, seq: int, timeout: float = 15) -> list[dict]:
+        """Return the events after a sequence number, waiting up to the timeout for new ones."""
         with self.lock:
             if len(self.events) <= seq:
                 self.lock.wait(timeout)
             return self.events[seq:]
 
     def start(self, name: str, target, *args) -> bool:
+        """Start a background job unless one is already running (clears the event log); returns
+        False when busy.
+        """
         with self.lock:
             if self.busy:
                 return False
@@ -81,6 +88,9 @@ class Session:
             self.lock.notify_all()
 
         def runner():
+            """Run the job, report any error to the dashboard, then mark the session idle and emit
+            'done'.
+            """
             try:
                 target(*args)
             except Exception as error:
@@ -99,16 +109,19 @@ S = Session()
 
 # ------------------------------------------------------------------ storage
 def _load(name: str):
+    """Load a JSON file from artifacts/demo-runs, or None."""
     path = RUNS_DIR / name
     return json.loads(path.read_text()) if path.exists() else None
 
 
 def _save(name: str, doc):
+    """Write a JSON document into artifacts/demo-runs."""
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
     (RUNS_DIR / name).write_text(json.dumps(doc, default=str))
 
 
 def saved_runs(limit: int = 40) -> list[dict]:
+    """Summaries of the most recent injected runs (newest first) for the dashboard history."""
     rows = []
     for path in sorted(RUNS_DIR.glob("run-*.json"), reverse=True):
         if path.name.count(".") > 1:
@@ -131,6 +144,7 @@ def saved_runs(limit: int = 40) -> list[dict]:
 
 
 def saved_campaigns() -> list[dict]:
+    """Summaries of the most recent campaigns."""
     out = []
     for path in sorted(RUNS_DIR.glob("campaign-*.json"), reverse=True)[:10]:
         doc = json.loads(path.read_text())
@@ -141,6 +155,7 @@ def saved_campaigns() -> list[dict]:
 
 # --------------------------------------------------------------------- jobs
 def job_plan():
+    """Background job: run the planner agent on recent history and save the plan."""
     history = saved_runs(20)
     plan = agent.plan_experiments(S.emit, history)
     plan["created_at"] = datetime.now().isoformat()
@@ -148,6 +163,9 @@ def job_plan():
 
 
 def _analyse(record: dict) -> dict | None:
+    """Run the analyst agent on a run that injected a fault, save its analysis and fix patch; errors
+    are reported to the dashboard instead of raised.
+    """
     if not record.get("injected"):
         S.emit("agent", {"agent": "analyst", "kind": "error",
                          "text": f"Nothing to analyse: no fault was injected ({record.get('abort_reason')})."})
@@ -165,6 +183,9 @@ def _analyse(record: dict) -> dict | None:
 
 
 def _experiment(params: dict) -> dict:
+    """Run one experiment as the session's current experiment (so the kill switch and End fault now
+    can reach it).
+    """
     exp = Experiment(params, S.emit)
     S.experiment = exp
     if S.stop.is_set():
@@ -176,12 +197,16 @@ def _experiment(params: dict) -> dict:
 
 
 def job_run(params: dict):
+    """Background job: run one experiment, then analyse it unless analysis was turned off."""
     record = _experiment(params)
     if params.get("analyse", True):
         _analyse(record)
 
 
 def job_campaign(experiments: list[dict]):
+    """Background job: run several experiments with a health gate between them, analyse each, then
+    produce the campaign report.
+    """
     cid = datetime.now().strftime("campaign-%Y%m%d-%H%M%S")
     doc = {"id": cid, "started_at": datetime.now().isoformat(), "runs": [], "experiments": experiments}
     S.emit("campaign", {"id": cid, "experiments": experiments, "index": 0})
@@ -214,12 +239,16 @@ def job_campaign(experiments: list[dict]):
 
 
 def job_analyse(run_id: str):
+    """Background job: re-run the analyst on a saved run."""
     record = _load(f"{run_id}.json")
     S.emit("evidence", record)
     _analyse(record)
 
 
 def job_autofix(run_id: str):
+    """Background job: deploy a run's validated fix, re-run the same experiment and save the
+    before/after comparison.
+    """
     before = _load(f"{run_id}.json")
     analysis = _load(f"{run_id}.analysis.json")
     fix = (analysis or {}).get("fix")
@@ -240,10 +269,13 @@ def job_autofix(run_id: str):
 
 # ------------------------------------------------------------------ handler
 class Handler(BaseHTTPRequestHandler):
+    """HTTP handler for the dashboard page, its JSON API and the server-sent event stream."""
     def log_message(self, fmt, *args):
+        """Silence the default per-request logging."""
         pass
 
     def _send(self, status: int, data: bytes, ctype: str, extra: dict | None = None):
+        """Send a response with the given status, body and content type (never cached)."""
         self.send_response(status)
         self.send_header("Content-Type", ctype)
         self.send_header("Cache-Control", "no-store")
@@ -254,13 +286,18 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _json(self, status: int, body):
+        """Send a JSON response."""
         self._send(status, json.dumps(body, default=str).encode(), "application/json")
 
     def _body(self) -> dict:
+        """Parse the JSON request body ({} when empty)."""
         length = int(self.headers.get("Content-Length") or 0)
         return json.loads(self.rfile.read(length) or b"{}") if length else {}
 
     def do_GET(self):
+        """Serve the dashboard files and the read endpoints (status, topology, shop view, plan,
+        runs, campaigns, report download, event stream).
+        """
         path, _, query = self.path.partition("?")
         q = {k: v[0] for k, v in parse_qs(query).items()}
         try:
@@ -310,6 +347,9 @@ class Handler(BaseHTTPRequestHandler):
         self._json(404, {"error": "not found"})
 
     def do_POST(self):
+        """Handle the action endpoints (run, plan, campaign, analyse, autofix, end fault, abort,
+        rollback) after Host and Origin checks.
+        """
         host = self.headers.get("Host", "")
         port = self.server.server_address[1]
         if host not in (f"127.0.0.1:{port}", f"localhost:{port}"):   # blocks DNS-rebinding pages
@@ -360,6 +400,9 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(202, {"ok": True, "job": name})
 
     def _events(self, after: int):
+        """Stream session events to the browser as server-sent events, with keep-alives, until the
+        client disconnects.
+        """
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-store")
@@ -378,6 +421,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
+    """Start the dashboard: load .env, take the single-instance lock, restore any leftover faults,
+    install restore handlers and serve on 127.0.0.1.
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=8099)
     args = parser.parse_args()

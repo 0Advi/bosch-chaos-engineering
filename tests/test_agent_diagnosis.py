@@ -24,6 +24,7 @@ BUNDLE = EvidenceBundle(items=[
 
 
 def proposal(**overrides):
+    """A model diagnosis proposal citing the bundle's evidence, with optional overrides."""
     base = {"category": "connectivity", "service": "checkout", "edge": "checkout->payment",
             "affected_paths": ["POST /api/checkout"], "cited_evidence": ["ev-002", "ev-001"],
             "alternatives": ["payment process down"], "uncertainty": "medium",
@@ -34,6 +35,7 @@ def proposal(**overrides):
 
 @pytest.fixture
 def finished_run(tmp_path):
+    """Fixture: a completed fake run in a temp store, for building evidence bundles."""
     flag = tmp_path / "flagd" / "demo.flagd.json"
     flag.parent.mkdir()
     shutil.copy(FLAG_FILE, flag)
@@ -46,6 +48,7 @@ def finished_run(tmp_path):
 
 # ------------------------------------------------------------- context
 def test_context_reports_missing_or_drifted_sources(tmp_path):
+    """Source excerpts that are missing or whose hash drifted are reported as such."""
     missing = ctx.load_excerpts(root=tmp_path)
     assert {e.status for e in missing} == {"missing"}
     target = tmp_path / "vendor" / "opentelemetry-demo" / "src" / "payment" / "charge.js"
@@ -58,10 +61,12 @@ def test_context_reports_missing_or_drifted_sources(tmp_path):
 @pytest.mark.skipif(not (ctx.ROOT / "vendor/opentelemetry-demo/src/payment/charge.js").exists(),
                     reason="vendor submodule not checked out (make bootstrap)")
 def test_pinned_sources_verify_against_the_vendor_checkout():
+    """All pinned source excerpts match the vendored upstream checkout."""
     assert ctx.build_context().complete
 
 
 def test_context_includes_semantics_and_payment_edges():
+    """The agent context includes payment semantics and the checkout->payment edge."""
     built = ctx.build_context()
     assert "<payment_semantics" in built.text and "checkout->payment" in built.text
     assert "retry" in built.text.lower()
@@ -69,6 +74,7 @@ def test_context_includes_semantics_and_payment_edges():
 
 # ------------------------------------------------------------- blinding
 def test_run_bundle_hides_the_injected_scenario(finished_run):
+    """The evidence bundle given to the model never reveals which fault was injected."""
     store, run_id = finished_run
     bundle = from_run(store.get(run_id), store.events(run_id))
     text = bundle.canonical()
@@ -80,6 +86,7 @@ def test_run_bundle_hides_the_injected_scenario(finished_run):
 
 
 def test_scenario_terms_fail_closed():
+    """Evidence that leaks scenario terms (like flag names) is refused."""
     leaky = EvidenceBundle(items=[{"id": "ev-001", "kind": "log", "at": "x",
                                    "data": {"body": "flag paymentFailure set to 100%"}}])
     with pytest.raises(BlindingError):
@@ -94,11 +101,13 @@ INCOMPLETE = ctx.SourceContext("<source id=\"x\" status=\"missing\"/>", "1" * 64
 
 
 def test_incomplete_source_context_downgrades_to_unverified():
+    """A diagnosis made with incomplete source context is downgraded to unverified."""
     result = diagnose_with_model("run-1", BUNDLE, FakeProvider([{"json": proposal()}]), INCOMPLETE)
     assert result.status == "unverified" and "source context incomplete" in result.problems[-1]
 
 
 def test_grounded_model_diagnosis_with_provenance():
+    """A well-cited model diagnosis is grounded and records model, prompt and context provenance."""
     fake = FakeProvider([{"json": proposal()}])
     result = diagnose_with_model("run-1", BUNDLE, fake, COMPLETE)
     assert result.status == "grounded", result.problems
@@ -125,12 +134,14 @@ def test_grounded_model_diagnosis_with_provenance():
       "requested_observations": ["traces"]}, "rejected", "high uncertainty"),
 ])
 def test_grounding_never_upgrades_unsupported_claims(overrides, status, problem):
+    """Claims not supported by the evidence are never accepted as grounded."""
     result = ground("run-1", proposal(**overrides), BUNDLE, "model")
     assert result.status == status
     assert any(problem in p for p in result.problems), result.problems
 
 
 def test_low_uncertainty_with_missing_signals_is_unverified():
+    """Claiming low uncertainty while signals are missing makes the result unverified."""
     bundle = EvidenceBundle(BUNDLE.items, missing=["span metrics are stale"])
     result = ground("run-1", proposal(uncertainty="low"), bundle, "model")
     assert result.status == "unverified" and "signals are missing" in result.problems[0]
@@ -140,10 +151,12 @@ def test_low_uncertainty_with_missing_signals_is_unverified():
     ("Retry the charge.", True), ("Do not retry payments without an idempotency key.", False),
     ("Never resubmit orders automatically.", False), ("Check the payment address.", False)])
 def test_retry_detection(text, expected):
+    """Suggestions that recommend payment retries are detected."""
     assert recommends_retry(text) is expected
 
 
 def test_untrusted_ledger_text_cannot_authorize_payment_retries():
+    """Text inside the evidence cannot make a payment-retry suggestion acceptable."""
     bundle = EvidenceBundle(BUNDLE.items + [{"id": "ev-003", "kind": "note", "at": "x",
                                              "data": {"idempotency": "order-key ledger present"}}])
     assert ground("run-1", proposal(next_action="Retry the charge."), bundle, "model").status == "unverified"
@@ -152,12 +165,14 @@ def test_untrusted_ledger_text_cannot_authorize_payment_retries():
 @pytest.mark.parametrize("reply, kind", [(ProviderError("rate_limit", "slow down", True), "rate_limit"),
                                          ({"text": "I think it is the network"}, "invalid_output")])
 def test_provider_failure_is_a_failed_result_not_a_diagnosis(reply, kind):
+    """A model provider error gives a failed result, never a diagnosis."""
     result = diagnose_with_model("run-1", BUNDLE, FakeProvider([reply]))
     assert result.status == "failed" and result.diagnosis is None
     assert result.provider_error["kind"] == kind
 
 
 def test_rule_baseline_admits_missing_telemetry_on_a_real_run(finished_run):
+    """The rule-based diagnoser admits insufficient evidence when telemetry is missing."""
     store, run_id = finished_run
     result = diagnose_with_rules(run_id, from_run(store.get(run_id), store.events(run_id)))
     assert result.diagnosis.category.value == "insufficient_evidence" and result.requested_observations

@@ -6,6 +6,7 @@ from controller.observer.observer import wait_for_trace
 
 
 def test_operator_overrides_do_not_replace_explicit_paths(tmp_path, monkeypatch):
+    """Local operator override files never replace paths passed explicitly."""
     local = tmp_path / "local.yaml"
     local.write_text("approved: true\nexecution_enabled: true\n")
     explicit = tmp_path / "explicit.yaml"
@@ -19,6 +20,7 @@ def test_operator_overrides_do_not_replace_explicit_paths(tmp_path, monkeypatch)
 
 
 def test_desktop_alias_preserves_root_and_symlink_checks(tmp_path, monkeypatch):
+    """The macOS /host_mnt path alias still enforces allowed roots and symlink checks."""
     monkeypatch.setattr(sandbox.sys, "platform", "darwin")
     allowed = tmp_path / "allowed"
     allowed.mkdir()
@@ -36,11 +38,14 @@ def test_desktop_alias_preserves_root_and_symlink_checks(tmp_path, monkeypatch):
 
 
 def test_waits_for_trace_assembly_and_keeps_partial_at_deadline():
+    """The observer waits for the full trace and keeps the partial one if the deadline passes."""
     partial = {"services": ["checkout"], "charge_spans": []}
     full = {"services": ["frontend", "checkout", "payment"], "charge_spans": [{}]}
     class DelayedTrace:
+        """Fake telemetry whose trace is partial on the first call and complete afterwards."""
         calls = 0
         def trace(self, _):
+            """Return the partial trace first, then the full one."""
             self.calls += 1
             return partial if self.calls == 1 else full
     client = DelayedTrace()

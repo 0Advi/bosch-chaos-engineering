@@ -56,9 +56,6 @@
         "schema_version": {
           "const": "1.0.0",
           "default": "1.0.0",
-          "enum": [
-            "1.0.0"
-          ],
           "title": "Schema Version",
           "type": "string"
         },
@@ -235,6 +232,7 @@
     "provider_error": {
       "anyOf": [
         {
+          "additionalProperties": true,
           "type": "object"
         },
         {
@@ -265,9 +263,6 @@
     "schema_version": {
       "const": "1.0.0",
       "default": "1.0.0",
-      "enum": [
-        "1.0.0"
-      ],
       "title": "Schema Version",
       "type": "string"
     },
@@ -290,6 +285,7 @@
       "type": "array"
     },
     "usage": {
+      "additionalProperties": true,
       "default": {},
       "title": "Usage",
       "type": "object"

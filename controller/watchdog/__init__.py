@@ -23,6 +23,9 @@ DEFAULT_DB = Path(__file__).resolve().parents[2] / "artifacts" / "results" / "co
 
 
 def _grace(run: dict, default: float) -> float:
+    """Seconds the watchdog waits for a silent controller before taking over (from the run's
+    limits).
+    """
     limits = (run.get("recovery") or {}).get("limits")
     return limits["watchdog_grace_s"] if limits else default
 
@@ -73,6 +76,9 @@ def reconcile_all(store: RunStore, env: Environment, default_grace: float = 10.0
 
 
 def main(argv=None, env_factory: Optional[Callable[[], Environment]] = None) -> int:
+    """Watchdog entry point: watch one run (or reconcile all unfinished runs once) and restore it if
+    its controller dies or misses its deadline.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
     target = parser.add_mutually_exclusive_group(required=True)

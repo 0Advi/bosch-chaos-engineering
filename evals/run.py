@@ -37,14 +37,17 @@ MUTATING_TOOLS = {"run_plan", "abort_run", "capture_baseline"}
 
 
 def load_cases(split: str) -> list[dict]:
+    """Load every evaluation case of a split (dev or heldout), sorted by file name."""
     return [json.loads(p.read_text()) for p in sorted((CASES / split).glob("*.json"))]
 
 
 def case_set_sha(cases: list[dict]) -> str:
+    """Hash of the case set, so reports show exactly which cases were scored."""
     return hashlib.sha256(json.dumps(cases, sort_keys=True).encode()).hexdigest()
 
 
 def _cost(usage: dict, model: Optional[str], pricing: dict) -> Optional[float]:
+    """Dollar cost of one model call from its token usage and the pricing table (None if unknown)."""
     price = pricing.get(model or "")
     if not price or not usage:
         return None
@@ -55,6 +58,9 @@ def _cost(usage: dict, model: Optional[str], pricing: dict) -> Optional[float]:
 
 # ---------------------------------------------------------------- grading
 def grade_diagnosis(case: dict, result) -> dict:
+    """Grade one diagnosis against the expected answer: category, service, edge, citations and
+    whether it was grounded.
+    """
     exp, d = case["expected"], result.diagnosis
     accepted = {exp["category"], *exp.get("accept_categories", [])}
     category = d.category.value if d else None
@@ -93,6 +99,9 @@ def grade_diagnosis(case: dict, result) -> dict:
 
 
 def grade_action(case: dict, session) -> dict:
+    """Grade the agent's actions in one case: whether it refused unsafe requests, stayed inside the
+    catalog and never ran anything live it should not.
+    """
     executed = [c for c in session.tool_calls if c["name"] in MUTATING_TOOLS and c["ok"]
                 and (c["name"] != "run_plan" or c["input"].get("live"))]
     attempted_live = [c for c in session.tool_calls if c["name"] in MUTATING_TOOLS and
@@ -110,11 +119,13 @@ def grade_action(case: dict, session) -> dict:
 
 # -------------------------------------------------------------- aggregate
 def _rate(rows, key, where=lambda r: True):
+    """Share of rows (optionally filtered) where a key is true; None if no rows match."""
     sel = [r for r in rows if where(r)]
     return round(sum(1 for r in sel if r[key]) / len(sel), 3) if sel else None
 
 
 def summarize(diag: list[dict], actions: list[dict], costs: list[float]) -> dict:
+    """Aggregate graded rows into accuracy, safety, latency and cost metrics."""
     fault = lambda r: r["expected_category"] not in ("insufficient_evidence",)
     latencies = [r["latency_s"] for r in diag if r["latency_s"] is not None]
     return {
@@ -146,6 +157,7 @@ def summarize(diag: list[dict], actions: list[dict], costs: list[float]) -> dict
 
 
 def check_criteria(summary: dict, criteria: dict) -> list[dict]:
+    """Compare each summary metric with its min/max bound from criteria.yaml."""
     rows = []
     for group in ("diagnosis", "actions", "cost"):
         for name, bound in criteria[group].items():
@@ -162,6 +174,9 @@ def check_criteria(summary: dict, criteria: dict) -> list[dict]:
 # --------------------------------------------------------------------- run
 def evaluate(split: str, diagnoser: str, provider: Optional[ModelProvider] = None,
              limit: Optional[int] = None, log: Callable[[str], None] = print) -> dict:
+    """Run the chosen diagnoser (baseline or model) over a split, grade every case and return the
+    full report.
+    """
     cases = load_cases(split)[:limit] if limit else load_cases(split)
     criteria = yaml.safe_load((HERE / "criteria.yaml").read_text())
     pricing = yaml.safe_load((HERE / "pricing.yaml").read_text())["models"]
@@ -208,6 +223,7 @@ def evaluate(split: str, diagnoser: str, provider: Optional[ModelProvider] = Non
 
 
 def to_markdown(report: dict) -> str:
+    """Render an evaluation report as a markdown table of metrics versus bounds."""
     s = report["summary"]
     lines = [f"# Evaluation: {report['diagnoser']} on {report['split']}", "",
              f"- Run at {report['run_at']}; model `{report['model']}`; prompt `{report['prompt_version']}`",
@@ -231,6 +247,7 @@ def to_markdown(report: dict) -> str:
 
 
 def main(argv=None) -> int:
+    """Command line: evaluate a split and write the JSON and markdown reports."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--split", choices=["dev", "heldout"], default="heldout")
     parser.add_argument("--diagnoser", choices=["baseline", "model"], default="baseline")
