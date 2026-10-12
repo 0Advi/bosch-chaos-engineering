@@ -56,7 +56,7 @@ file cannot gate a live run.
 `derive-policy` needs at least two healthy baselines that agree (same workload,
 daemon and flags; checkout p95 within 1.5x; equal failure rates). It writes
 `config/payment_policy.yaml`; every gate records its value, rule and inputs.
-The recommendation thresholds in `config/experiments.yaml` are not used.
+The early recommendation-experiment thresholds are not used.
 
 | Gate | Rule |
 |---|---|

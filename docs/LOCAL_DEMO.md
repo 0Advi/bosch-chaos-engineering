@@ -1,4 +1,7 @@
-# Run the local payment demo
+# Run the local payment demo (workbench)
+
+> This runs the earlier operator workbench on port 8095. For the AI Chaos Lab used in the
+> presentation, see [PRESENTATION.md](PRESENTATION.md).
 
 Start Docker Desktop, then run these commands from the repository with its Python environment active:
 

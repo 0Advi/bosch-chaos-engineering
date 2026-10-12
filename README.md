@@ -181,7 +181,7 @@ The selected upstream minimal deployment has **25 services**:
 
 Kafka, accounting, fraud detection, the shopping AI agent/MCP/chatbot and profiling services are **not enabled**. Their code remains in the pinned submodule without becoming runtime dependencies.
 
-**Experiment target:** payment is the focus, using the upstream payment failure and unreachable flags. See the [payment failure plan](docs/payment-failure-plan.md) and the disabled [scenario catalog](config/payment_scenarios.proposed.json). `config/experiments.yaml` currently holds only the original proposed recommendation outage, with execution disabled. Payment execution needs its own baseline, guarded executor and verified restoration.
+**Experiment target:** payment is the focus, using the upstream payment failure and unreachable flags. See the [payment failure plan](docs/payment-failure-plan.md) and the typed [capability catalog](config/capabilities.yaml). The AI Chaos Lab's 20-scenario catalog is in [demo/catalog.py](demo/catalog.py). Payment execution needs its own baseline, guarded executor and verified restoration.
 
 ## Repository layout
 
@@ -189,8 +189,6 @@ Kafka, accounting, fraud detection, the shopping AI agent/MCP/chatbot and profil
 demo/                           AI Chaos Lab: faults, workload, evidence, agents, dashboard, auto-fix
 controller/                     Contracts, bounded tools, scope checks, previews
 schemas/                        Exported JSON Schemas for shared records
-config/experiments.yaml         Disabled experiment and safety contract
-config/payment_scenarios.proposed.json   Proposed payment scenarios (disabled)
 deploy/                         Compose overlay and Collector adjustment
 scripts/demo.py                 Deployment validate/start/stop/smoke helper
 scripts/verify_startup.py       Synthetic checkout and telemetry checks

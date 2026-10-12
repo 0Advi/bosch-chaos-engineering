@@ -1,5 +1,5 @@
 schema_version: "1.0.0"
-# Typed capability catalog (P0-04). Supersedes config/payment_scenarios.proposed.json
+# Typed capability catalog (P0-04). Replaces the early proposed payment scenario list
 # for the controller. adapter_config is operator-owned: plans and models can only
 # choose the declared parameters. Nothing here runs live unless
 # config/execution_policy.yaml lists the capability and the sandbox is approved.

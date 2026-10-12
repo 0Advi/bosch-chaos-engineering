@@ -4,7 +4,7 @@ Source review: 10 October 2026, pinned OpenTelemetry Demo 3.1.0,
 `dedc0178918e260823323b8d95005a8cb924b007`.
 This is a proposed experiment design. No fault was executed in this review.
 The executable controller, healthy baseline, and recovery safeguards remain work
-in progress. Current `config/experiments.yaml` permits only a proposed
+in progress. The early experiment contract permitted only a proposed
 recommendation stop and has execution disabled; this document does not enable it.
 
 ## Target application and payment flow
@@ -74,7 +74,7 @@ simulate packet loss. The observer must distinguish those mechanisms.
 The LLM proposes a catalog scenario ID and explains observations. A deterministic
 runner validates the proposal and owns mutations; it does not give the LLM
 arbitrary shell/Docker commands. The proposed catalog is
-`config/payment_scenarios.proposed.json`, with execution disabled.
+the early proposed scenario list (now `config/capabilities.yaml`), with execution disabled.
 
 Recommended bounded tools:
 

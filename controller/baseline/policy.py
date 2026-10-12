@@ -1,6 +1,6 @@
 """Derive the payment execution policy from measured baselines (P1-04).
 
-Nothing here reuses config/experiments.yaml (recommendation) thresholds. Each
+Nothing here reuses the early recommendation-experiment thresholds. Each
 gate records its value, the rule that produced it and the measured inputs, so
 every execution gate can be traced back to baseline evidence.
 """

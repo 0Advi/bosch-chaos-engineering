@@ -1,10 +1,6 @@
-> Current delivery (10 October 2026): P0–P4 teammate work and P5/P6 preparation
-> are integrated. The workbench connects to the controller; automated tests,
-> free rule evaluation and an explicitly simulated lifecycle demo are available.
-> Full live fault → verified repair → replay acceptance is still pending.
-> See [verified status](../IMPLEMENTATION_STATUS.md) and
-> [release/demo instructions](release-and-demo.md). The intended behavior described
-> below must not be presented as entirely demonstrated.
+> **Current state (October 2026):** the **AI Chaos Lab** (`demo/`, `python -m demo.server`, http://127.0.0.1:8099) runs live: an AI planner proposes experiments, 20 guarded fault scenarios are injected into the 25-service shop and auto-restored, impact is measured from traces, metrics and logs, and LangGraph agents (free-tier Gemini) produce ranked weaknesses and validated code fixes. See [PRESENTATION.md](PRESENTATION.md). The controller/workbench below is the stricter foundation (P0–P7); its own live execution stays disabled by default.
+
+> The sections below describe the foundation's design and acceptance plan.
 
 # Bosch Chaos Engineering: project brief for judges
 

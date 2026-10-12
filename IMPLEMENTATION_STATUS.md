@@ -1,5 +1,7 @@
 # Implementation status
 
+> **Current state (October 2026):** the **AI Chaos Lab** (`demo/`, `python -m demo.server`, http://127.0.0.1:8099) runs live: an AI planner proposes experiments, 20 guarded fault scenarios are injected into the 25-service shop and auto-restored, impact is measured from traces, metrics and logs, and LangGraph agents (free-tier Gemini) produce ranked weaknesses and validated code fixes. See [docs/PRESENTATION.md](docs/PRESENTATION.md). The controller/workbench below is the stricter foundation (P0–P7); its own live execution stays disabled by default.
+
 Updated 10 October 2026 following review and integration of all teammate P0–P4
 branches with P5/P6. See [release and demo instructions](docs/release-and-demo.md).
 

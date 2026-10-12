@@ -53,7 +53,7 @@ The current Compose project/network separation does not establish dedicated
 runtime isolation. Verify that before executing faults. Earlier startup traffic
 had timeouts; do not treat startup success as a healthy baseline.
 
-`config/experiments.yaml` still describes a disabled recommendation experiment.
+The early disabled recommendation experiment contract has been removed; payment capabilities live in `config/capabilities.yaml`.
 It must not silently become the payment execution policy. Its proposed
 two-second request timeout is unsuitable without payment baseline measurements;
 the recorded successful checkout took approximately 2.81 seconds.
