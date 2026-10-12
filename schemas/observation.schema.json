@@ -54,7 +54,7 @@
     "latency_ms": {
       "anyOf": [
         {
-          "minimum": 0,
+          "minimum": 0.0,
           "type": "number"
         },
         {
@@ -151,6 +151,9 @@
     "schema_version": {
       "const": "1.0.0",
       "default": "1.0.0",
+      "enum": [
+        "1.0.0"
+      ],
       "title": "Schema Version",
       "type": "string"
     },

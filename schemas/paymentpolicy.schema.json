@@ -4,7 +4,6 @@
       "additionalProperties": false,
       "properties": {
         "inputs": {
-          "additionalProperties": true,
           "title": "Inputs",
           "type": "object"
         },
@@ -55,7 +54,6 @@
     },
     "derived_from": {
       "items": {
-        "additionalProperties": true,
         "type": "object"
       },
       "minItems": 2,
@@ -90,6 +88,9 @@
     "schema_version": {
       "const": "1.0.0",
       "default": "1.0.0",
+      "enum": [
+        "1.0.0"
+      ],
       "title": "Schema Version",
       "type": "string"
     }

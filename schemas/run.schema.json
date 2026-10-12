@@ -77,7 +77,6 @@
   "additionalProperties": false,
   "properties": {
     "applied_state": {
-      "additionalProperties": true,
       "default": {},
       "title": "Applied State",
       "type": "object"
@@ -120,7 +119,6 @@
       "type": "string"
     },
     "prior_state": {
-      "additionalProperties": true,
       "default": {},
       "title": "Prior State",
       "type": "object"
@@ -143,7 +141,6 @@
       "title": "Recovery Outcome"
     },
     "restored_state": {
-      "additionalProperties": true,
       "default": {},
       "title": "Restored State",
       "type": "object"
@@ -159,6 +156,9 @@
     "schema_version": {
       "const": "1.0.0",
       "default": "1.0.0",
+      "enum": [
+        "1.0.0"
+      ],
       "title": "Schema Version",
       "type": "string"
     },
