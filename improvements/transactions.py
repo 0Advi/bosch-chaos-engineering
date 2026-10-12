@@ -10,16 +10,33 @@ from controller.schemas.contracts import SandboxRef
 
 
 class ImageOperator(Protocol):
-    def exclusive_lock(self) -> AbstractContextManager: ...
-    def verify_idle_recovered_sandbox(self, sandbox: SandboxRef) -> None: ...
-    def current_images(self, services: list[str]) -> dict[str, str]: ...
-    def replace_images(self, images: dict[str, str]) -> None: ...
-    def verify_health(self, services: list[str], timeout_seconds: int) -> bool: ...
-    def block_new_experiments(self) -> None: ...
+    """Interface to the container runtime used by the transactional backend."""
+    def exclusive_lock(self) -> AbstractContextManager:
+        """Lock shared with experiment creation so nothing runs during a deployment."""
+        ...
+    def verify_idle_recovered_sandbox(self, sandbox: SandboxRef) -> None:
+        """Raise unless the sandbox is idle and fully recovered."""
+        ...
+    def current_images(self, services: list[str]) -> dict[str, str]:
+        """The images the services run now."""
+        ...
+    def replace_images(self, images: dict[str, str]) -> None:
+        """Switch services to the given images."""
+        ...
+    def verify_health(self, services: list[str], timeout_seconds: int) -> bool:
+        """Whether the services become healthy within the timeout."""
+        ...
+    def block_new_experiments(self) -> None:
+        """Stop new experiments (used when a rollback could not be confirmed)."""
+        ...
 
 
 class TransactionalBackend:
+    """Deploys new images under an exclusive lock with a journal, a health deadline and automatic
+    rollback.
+    """
     def __init__(self, operator: ImageOperator, journal: Callable[[dict], None], timeout_seconds=30):
+        """Remember the operator, journal and health deadline (1-60 s)."""
         if not isinstance(timeout_seconds,int) or isinstance(timeout_seconds,bool) or not 1 <= timeout_seconds <= 60:
             raise ValueError('health deadline must be 1–60 seconds')
         self.operator=operator
@@ -27,6 +44,9 @@ class TransactionalBackend:
         self.timeout=timeout_seconds
 
     def deploy_transaction(self, images, rollback_images, sandbox):
+        """Replace the images, check health and roll back if unhealthy; block experiments if even
+        the rollback fails.
+        """
         services=sorted(images)
         if not services or set(images)!=set(rollback_images):
             raise ValueError('image sets must match')

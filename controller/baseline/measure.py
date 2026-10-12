@@ -34,11 +34,15 @@ CHECKOUT = "POST /api/checkout"
 
 
 def load_criteria(path: Path = CRITERIA_PATH) -> dict:
+    """Load the baseline criteria (workload size, thresholds, freshness)."""
     return yaml.safe_load(path.read_text())
 
 
 @dataclass
 class Environment:
+    """Everything a baseline measurement needs: shop client, telemetry, sandbox identity, runtime,
+    upstream revision, flag file, output directory and logger.
+    """
     shop: Shop
     telemetry: Optional[Telemetry]
     sandbox: SandboxRef
@@ -50,6 +54,7 @@ class Environment:
 
 
 def _sleep_until(deadline: float) -> None:
+    """Sleep until a monotonic deadline (no-op if it has passed)."""
     remaining = deadline - time.monotonic()
     if remaining > 0:
         time.sleep(remaining)
@@ -58,6 +63,10 @@ def _sleep_until(deadline: float) -> None:
 def measure(env: Environment, criteria: dict, attempts: Optional[int] = None,
             duration_seconds: Optional[float] = None, warmup: Optional[int] = None,
             check_logs: bool = True) -> tuple[Baseline, Path]:
+    """Measure a healthy payment baseline: warm up, run evenly spaced valid checkouts with protected
+    probes, run invalid-card controls, correlate traces and logs, check metrics and container
+    health, then save the baseline and its observations with a verdict.
+    """
     w = criteria["workload"]
     attempts = attempts if attempts is not None else w["attempts"]
     duration = duration_seconds if duration_seconds is not None else w["duration_seconds"]
@@ -191,6 +200,7 @@ def measure(env: Environment, criteria: dict, attempts: Optional[int] = None,
 
 
 def _missing_counts(observations) -> dict:
+    """Count each kind of missing telemetry across observations."""
     counts: dict[str, int] = {}
     for o in observations:
         for m in o.missing:
@@ -200,6 +210,9 @@ def _missing_counts(observations) -> dict:
 
 
 def _write(out_dir: Path, baseline: Baseline, obs_file: Path, records, observations, probe_obs, details) -> Path:
+    """Write the baseline summary and its observations file, refusing to save any fixture card,
+    email or address values.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     lines = [json.dumps({"kind": "attempt", "record": r, "observation": o.model_dump(mode="json"),
                          "telemetry": details.get(r["attempt_id"], {})}, default=str)

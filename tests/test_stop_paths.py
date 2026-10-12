@@ -29,6 +29,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.fixture
 def flag_file(tmp_path):
+    """Fixture: a temp copy of the committed flag file."""
     path = tmp_path / "flagd" / "demo.flagd.json"
     path.parent.mkdir()
     shutil.copy(FLAG_FILE, path)
@@ -37,15 +38,18 @@ def flag_file(tmp_path):
 
 @pytest.fixture
 def db(tmp_path):
+    """Fixture: path of a temp run database."""
     return tmp_path / "runs.sqlite3"
 
 
 def execute(plan, env, db, **limits):
+    """Execute a live run with fast limits, open gates and no logging."""
     return runner.execute(plan, live=True, env=env, store=RunStore(db), limits=fast_limits(**limits),
                           gate_check=lambda p, c: [], log=lambda line: None)
 
 
 def wait_for(predicate, timeout=10.0):
+    """Poll a predicate until true or fail after the timeout."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if predicate():
@@ -55,6 +59,7 @@ def wait_for(predicate, timeout=10.0):
 
 
 def running(db):
+    """The id of the run that is currently RUNNING, if any."""
     store = RunStore(db)
     runs = store.active_runs()
     return runs[0]["run_id"] if runs and runs[0]["state"] == "RUNNING" and any(
@@ -62,12 +67,15 @@ def running(db):
 
 
 def assert_restored(flag_file):
+    """The flag file equals the committed baseline byte for byte."""
     assert flag_file.read_bytes() == FLAG_FILE.read_bytes()
 
 
 # ----------------------------------------------------------- stop paths
 def test_manual_abort_from_another_process_restores(flag_file, db):
+    """An abort requested from another process stops the run and restores the flag."""
     def abort_when_running():
+        """Request an abort once the run is RUNNING."""
         wait_for(lambda: running(db))
         RunStore(db).request_abort(running(db))
     threading.Thread(target=abort_when_running, daemon=True).start()
@@ -77,6 +85,7 @@ def test_manual_abort_from_another_process_restores(flag_file, db):
 
 
 def test_protected_path_degradation_aborts(flag_file, db):
+    """Failing protected paths abort the run and restore the flag."""
     result = execute(make_plan(duration=20), FakeEnvironment(flag_file, protected_fail_when_faulted=True), db)
     assert (result["state"], result["stop_reason"]) == ("ABORTED", "protected_path_degraded")
     assert result["result"]["protected"]["failures"] > fast_limits().allowed_protected_failures
@@ -84,13 +93,18 @@ def test_protected_path_degradation_aborts(flag_file, db):
 
 
 def test_observer_loss_aborts(flag_file, db):
+    """Losing observability aborts the run."""
     result = execute(make_plan(duration=20), FakeEnvironment(flag_file, observer_fail_after=2), db)
     assert (result["state"], result["stop_reason"]) == ("ABORTED", "observation_loss")
     assert_restored(flag_file)
 
 
 def test_concurrent_edit_is_not_overwritten_and_blocks_new_runs(flag_file, db):
+    """An outside edit during a run is not overwritten, the run needs attention and new runs are
+    blocked.
+    """
     def edit_when_running():
+        """Edit the flag file once the run is RUNNING."""
         wait_for(lambda: running(db))
         doc = json.loads(flag_file.read_text())
         doc["flags"]["cartFailure"]["defaultVariant"] = "10%"
@@ -110,12 +124,14 @@ def test_concurrent_edit_is_not_overwritten_and_blocks_new_runs(flag_file, db):
 
 
 def test_too_few_samples_is_inconclusive_not_success(flag_file, db):
+    """Too few samples make the result inconclusive, not a success."""
     result = execute(make_plan(duration=0), FakeEnvironment(flag_file), db, min_affected_samples=50)
     assert result["state"] == "RECOVERED"
     assert result["result"]["conclusive"] is False and "inconclusive" in result["result"]["note"]
 
 
 def test_unrelated_service_change_needs_attention(flag_file, db):
+    """A service restart seen after the fault makes the run NEEDS_ATTENTION."""
     result = execute(make_plan(), FakeEnvironment(flag_file, restart_service_after_fault=True), db)
     assert result["state"] == "NEEDS_ATTENTION"
     events = RunStore(db).events(result["run_id"])
@@ -124,15 +140,18 @@ def test_unrelated_service_change_needs_attention(flag_file, db):
 
 
 def test_failed_recovery_is_not_reported_as_recovered(flag_file, db):
+    """If recovery checks fail the run is NEEDS_ATTENTION, not RECOVERED."""
     result = execute(make_plan(), FakeEnvironment(flag_file, recovery_fails=True), db)
     assert result["state"] == "NEEDS_ATTENTION"
     assert_restored(flag_file)
 
 
 def test_only_the_selected_flag_changes_during_a_run(flag_file, db):
+    """During a run only the selected flag differs from the baseline."""
     seen = []
 
     def snapshot_when_running():
+        """Capture the flags once the run is RUNNING."""
         wait_for(lambda: running(db))
         seen.append(json.loads(flag_file.read_text())["flags"])
         RunStore(db).request_abort(running(db))
@@ -150,6 +169,7 @@ def test_watchdog_takes_over_a_stuck_controller_at_the_hard_deadline(flag_file, 
     outcome = {}
 
     def supervise():
+        """Run the watchdog for the run once it is RUNNING."""
         rid = None
         wait_for(lambda: running(db))
         rid = running(db)
@@ -165,6 +185,7 @@ def test_watchdog_takes_over_a_stuck_controller_at_the_hard_deadline(flag_file, 
 
 
 def _spawn_controller(tmp_path, flag_file, db, watchdog_enabled):
+    """Start a controller in a separate process (optionally with a watchdog) for kill tests."""
     env = FakeEnvironment(flag_file, watchdog=watchdog_enabled)
     config = env.save(tmp_path / "env.json")
     plan = tmp_path / "plan.json"
@@ -175,6 +196,7 @@ def _spawn_controller(tmp_path, flag_file, db, watchdog_enabled):
 
 
 def test_hard_kill_of_controller_is_restored_by_detached_watchdog(tmp_path, flag_file, db):
+    """When the controller is killed, the detached watchdog restores the flag."""
     proc = _spawn_controller(tmp_path, flag_file, db, watchdog_enabled=True)
     try:
         wait_for(lambda: running(db), timeout=20)
@@ -193,6 +215,7 @@ def test_hard_kill_of_controller_is_restored_by_detached_watchdog(tmp_path, flag
 
 
 def test_restart_reconciliation_restores_when_no_watchdog_survived(tmp_path, flag_file, db):
+    """Without a watchdog, the next controller start reconciles and restores the killed run."""
     proc = _spawn_controller(tmp_path, flag_file, db, watchdog_enabled=False)
     try:
         wait_for(lambda: running(db), timeout=20)
@@ -215,4 +238,7 @@ def test_restart_reconciliation_restores_when_no_watchdog_survived(tmp_path, fla
     ({"state": "RECOVERED", "hard_deadline_at": 10.0, "controller_pid": 999999}, (None, False)),
 ])
 def test_takeover_rules(run, expected):
+    """The watchdog takes over only for the right reasons (dead owner, missed heartbeat, passed
+    deadline).
+    """
     assert watchdog.takeover_reason(run, now=50.0, grace=5.0) == expected

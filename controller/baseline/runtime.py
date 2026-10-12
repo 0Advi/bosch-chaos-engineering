@@ -12,6 +12,7 @@ UNITS = {"b": 1, "kib": 1024, "mib": 1024 ** 2, "gib": 1024 ** 3,
 
 
 def _bytes(text: str):
+    """Convert a docker size string such as '120MiB' to bytes."""
     match = re.match(r"\s*([\d.]+)\s*([a-zA-Z]+)", text)
     if not match:
         return None
@@ -19,19 +20,24 @@ def _bytes(text: str):
 
 
 def _docker(*args: str) -> str:
+    """Run a docker CLI command and return its output (raises on failure)."""
     return subprocess.run(["docker", *args], capture_output=True, text=True,
                           timeout=60, check=True).stdout
 
 
 class DockerRuntime:
+    """Read-only view of the sandbox project's containers through the docker CLI."""
     def __init__(self, project: str):
+        """Remember the Compose project to inspect."""
         self.project = project
 
     def _ids(self) -> list[str]:
+        """Ids of all containers in the project."""
         return _docker("ps", "--all", "--quiet", "--no-trunc", "--filter",
                        f"label=com.docker.compose.project={self.project}").split()
 
     def inventory(self) -> dict:
+        """Per service: container id, status, health, restart count and OOM kill."""
         ids = self._ids()
         services = {}
         for c in json.loads(_docker("inspect", *ids)) if ids else []:
@@ -43,6 +49,7 @@ class DockerRuntime:
         return services
 
     def stats(self) -> dict:
+        """Per service: CPU percent, memory used and memory limit."""
         names = {v["id"]: k for k, v in self.inventory().items()}
         out = _docker("stats", "--no-stream", "--format", "{{json .}}", *names) if names else ""
         result = {}
@@ -56,6 +63,7 @@ class DockerRuntime:
 
 
 def upstream_revision() -> str:
+    """The pinned upstream demo's git commit, or 'unknown'."""
     try:
         return subprocess.run(["git", "-C", str(ROOT / "vendor" / "opentelemetry-demo"), "rev-parse", "HEAD"],
                               capture_output=True, text=True, timeout=10, check=True).stdout.strip()
@@ -64,6 +72,9 @@ def upstream_revision() -> str:
 
 
 def health_findings(before: dict, after: dict, max_restarts: int) -> list[str]:
+    """Container problems between two inventories: not running, unhealthy, OOM-killed or restarted
+    more than allowed.
+    """
     findings = []
     for service, state in sorted(after.items()):
         if state["status"] != "running":

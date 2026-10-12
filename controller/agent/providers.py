@@ -29,15 +29,22 @@ class ProviderError(RuntimeError):
     connection | bad_request | server | refusal | truncated | invalid_output | budget"""
 
     def __init__(self, kind: str, message: str, retryable: bool = False, **details):
+        """Create a provider error with a stable kind, a message, whether it is retryable and extra
+        details.
+        """
         super().__init__(f"{kind}: {message}")
         self.kind, self.message, self.retryable, self.details = kind, message, retryable, details
 
     def as_dict(self) -> dict:
+        """The error as a JSON-safe dict for results and API responses."""
         return {"kind": self.kind, "message": self.message[:500], "retryable": self.retryable, **self.details}
 
 
 @dataclass(frozen=True)
 class ModelRequest:
+    """A provider-neutral model request: system prompt, messages, token limit, tools, structured-
+    output schema, effort and caching.
+    """
     system: str
     messages: list
     max_tokens: int = 16000
@@ -49,6 +56,9 @@ class ModelRequest:
 
 @dataclass
 class ModelResponse:
+    """A provider-neutral model response: text, tool calls, stop reason, raw content, requested and
+    served model, usage, request id and latency.
+    """
     text: str
     tool_calls: list[dict]                   # [{"id", "name", "input"}]
     stop_reason: str
@@ -61,6 +71,9 @@ class ModelResponse:
     fallback_used: bool = False
 
     def json(self) -> dict:
+        """Parse the response text as a JSON object, raising ProviderError('invalid_output')
+        otherwise.
+        """
         try:
             value = json.loads(self.text)
         except ValueError as error:
@@ -71,10 +84,13 @@ class ModelResponse:
 
 
 class ModelProvider(Protocol):
+    """Interface every model provider implements: a name, a model id and complete()."""
     name: str
     model: str
 
-    def complete(self, request: ModelRequest) -> ModelResponse: ...
+    def complete(self, request: ModelRequest) -> ModelResponse:
+        """Send one request to the model and return its response."""
+        ...
 
 
 # --------------------------------------------------------------- Anthropic
@@ -85,6 +101,9 @@ class AnthropicProvider:
 
     def __init__(self, model: Optional[str] = None, effort: Optional[str] = None,
                  timeout_s: Optional[float] = None, max_retries: int = 2, client=None):
+        """Configure model, effort, timeout and retries from arguments or BOSCH_AGENT_* environment
+        variables.
+        """
         self.model = model or os.environ.get("BOSCH_AGENT_MODEL", DEFAULT_MODEL)
         self.effort = effort or os.environ.get("BOSCH_AGENT_EFFORT", "high")
         self.timeout_s = timeout_s or float(os.environ.get("BOSCH_AGENT_TIMEOUT_S", "120"))
@@ -93,6 +112,9 @@ class AnthropicProvider:
 
     @property
     def client(self):
+        """Create the Anthropic SDK client on first use, turning a missing SDK or credentials into
+        ProviderError.
+        """
         if self._client is None:
             try:
                 import anthropic
@@ -106,6 +128,9 @@ class AnthropicProvider:
         return self._client
 
     def complete(self, request: ModelRequest) -> ModelResponse:
+        """Call Claude with the request (structured output, tools, prompt caching, server-side
+        fallback) and map refusals, truncation and the reply into a ModelResponse.
+        """
         params = {"model": self.model, "max_tokens": request.max_tokens, "system": request.system,
                   "messages": request.messages, "betas": [FALLBACK_BETA], "fallbacks": "default"}
         output_config = {"effort": request.effort or self.effort}
@@ -139,6 +164,9 @@ class AnthropicProvider:
             fallback_used=any(getattr(b, "type", None) == "fallback" for b in response.content))
 
     def _call(self, params: dict):
+        """Make the SDK call and translate every SDK exception into a ProviderError with a stable
+        kind.
+        """
         import anthropic
         try:
             return self.client.beta.messages.create(**params)
@@ -173,10 +201,14 @@ class FakeProvider:
 
     def __init__(self, replies: Optional[list] = None,
                  responder: Optional[Callable[[ModelRequest], object]] = None, model: str = "fake-model"):
+        """Script replies (or a responder function) for tests; every request is recorded."""
         self.replies, self.responder, self.model = list(replies or []), responder, model
         self.requests: list[ModelRequest] = []
 
     def complete(self, request: ModelRequest) -> ModelResponse:
+        """Return the next scripted reply (text, JSON, tool calls, response or exception) as a
+        ModelResponse.
+        """
         self.requests.append(request)
         reply = self.responder(request) if self.responder else (self.replies.pop(0) if self.replies else None)
         if reply is None:
@@ -195,4 +227,5 @@ class FakeProvider:
 
 
 def default_provider() -> ModelProvider:
+    """The provider used when none is specified: Claude via the Anthropic SDK."""
     return AnthropicProvider()

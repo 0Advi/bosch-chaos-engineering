@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def message(text='{"a": 1}', stop="end_turn", model="claude-opus-5-5", blocks=None):
+    """A fake Anthropic SDK message with text or blocks, stop reason, model and usage."""
     return SimpleNamespace(
         content=blocks or [SimpleNamespace(type="text", text=text)], stop_reason=stop, model=model,
         stop_details=None, _request_id="req_123",
@@ -22,11 +23,14 @@ def message(text='{"a": 1}', stop="end_turn", model="claude-opus-5-5", blocks=No
 
 
 class FakeClient:
+    """Fake Anthropic client that records request parameters and returns a fixed result or raises."""
     def __init__(self, result):
+        """Remember the result and expose beta.messages.create."""
         self.calls, self.result = [], result
         self.beta = SimpleNamespace(messages=SimpleNamespace(create=self.create))
 
     def create(self, **params):
+        """Record the call and return (or raise) the configured result."""
         self.calls.append(params)
         if isinstance(self.result, Exception):
             raise self.result
@@ -34,11 +38,13 @@ class FakeClient:
 
 
 def provider(result, **kw):
+    """An AnthropicProvider wired to a fake client."""
     client = FakeClient(result)
     return AnthropicProvider(client=client, **kw), client
 
 
 def test_request_shape_pins_model_effort_schema_fallback_and_cache(monkeypatch):
+    """Requests pin the model, effort, output schema, fallback models and prompt caching."""
     monkeypatch.delenv("BOSCH_AGENT_MODEL", raising=False)
     p, client = provider(message())
     response = p.complete(ModelRequest(system="sys", messages=[{"role": "user", "content": "x"}],
@@ -55,6 +61,7 @@ def test_request_shape_pins_model_effort_schema_fallback_and_cache(monkeypatch):
 
 
 def test_model_id_comes_from_environment_not_tracked_files(monkeypatch):
+    """Model id and effort come from environment variables."""
     monkeypatch.setenv("BOSCH_AGENT_MODEL", "claude-sonnet-5-5")
     monkeypatch.setenv("BOSCH_AGENT_EFFORT", "medium")
     p, client = provider(message())
@@ -64,12 +71,14 @@ def test_model_id_comes_from_environment_not_tracked_files(monkeypatch):
 
 
 def test_served_model_is_recorded_when_a_fallback_answered():
+    """The model that actually answered is recorded when a fallback served the request."""
     p, _ = provider(message(model="claude-opus-4-8"))
     response = p.complete(ModelRequest(system="s", messages=[]))
     assert (response.model_requested, response.model_served) == ("claude-opus-5-5", "claude-opus-4-8")
 
 
 def test_tool_calls_are_extracted_and_raw_blocks_kept():
+    """Tool calls are extracted while the raw content blocks are kept for the next turn."""
     blocks = [SimpleNamespace(type="text", text="checking"),
               SimpleNamespace(type="tool_use", id="toolu_1", name="get_run", input={"run_id": "run-1"})]
     p, _ = provider(message(stop="tool_use", blocks=blocks))
@@ -80,6 +89,7 @@ def test_tool_calls_are_extracted_and_raw_blocks_kept():
 
 @pytest.mark.parametrize("stop, kind", [("refusal", "refusal"), ("max_tokens", "truncated")])
 def test_refusal_and_truncation_are_errors_not_answers(stop, kind):
+    """A refusal or a truncated reply raises an error instead of returning an answer."""
     p, _ = provider(message(stop=stop))
     with pytest.raises(ProviderError) as error:
         p.complete(ModelRequest(system="s", messages=[]))
@@ -87,6 +97,7 @@ def test_refusal_and_truncation_are_errors_not_answers(stop, kind):
 
 
 def _status_error(cls, status, headers=None):
+    """Build an SDK HTTP status error with a given status and headers."""
     request = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
     return cls("boom", response=httpx2.Response(status, request=request, headers=headers or {}), body=None)
 
@@ -102,6 +113,7 @@ def _status_error(cls, status, headers=None):
     (lambda: anthropic.APIConnectionError(request=httpx2.Request("POST", "https://x")), "connection", True),
 ])
 def test_sdk_errors_map_to_stable_kinds(error, kind, retryable):
+    """SDK errors map to stable error kinds and retryable flags."""
     p, _ = provider(error())
     with pytest.raises(ProviderError) as raised:
         p.complete(ModelRequest(system="s", messages=[]))
@@ -111,12 +123,14 @@ def test_sdk_errors_map_to_stable_kinds(error, kind, retryable):
 
 
 def test_invalid_structured_output_is_an_error():
+    """Non-JSON structured output raises invalid_output."""
     p, _ = provider(message(text="not json"))
     with pytest.raises(ProviderError, match="invalid_output"):
         p.complete(ModelRequest(system="s", messages=[])).json()
 
 
 def test_fake_provider_scripts_replies_and_errors():
+    """The fake provider returns scripted replies and errors in order."""
     fake = FakeProvider([{"json": {"x": 1}}, ProviderError("timeout", "slow")])
     assert fake.complete(ModelRequest(system="s", messages=[])).json() == {"x": 1}
     with pytest.raises(ProviderError):

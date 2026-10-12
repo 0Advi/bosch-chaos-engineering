@@ -18,6 +18,7 @@ CVV_RE = re.compile(r"(?i)(cvv\W{0,3})\d{3,4}")
 
 
 def redact_text(text: str) -> str:
+    """Redact card-number, email and CVV patterns in text."""
     text = CARD_RE.sub(REDACTED, text)
     text = EMAIL_RE.sub(REDACTED, text)
     return CVV_RE.sub(lambda m: m.group(1) + REDACTED, text)

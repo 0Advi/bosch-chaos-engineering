@@ -18,13 +18,10 @@ Provider (from .env): GEMINI_API_KEY (GEMINI_MODEL) or GROQ_API_KEY (GROQ_MODEL)
 """
 from __future__ import annotations
 
-import difflib
 import json
 import os
 from pathlib import Path
 import re
-import subprocess
-import tempfile
 import time
 from typing import Annotated, Callable, Literal
 
@@ -38,6 +35,7 @@ from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
 
 from . import evidence, topology
+from .fixcheck import syntax_check, validate_fix  # noqa: F401  (re-exported for autofix)
 from .catalog import CONTAINER_TARGETS, ENDPOINTS, EXCLUDED_TARGETS, HOT_PATCH, SCENARIOS
 
 UPSTREAM = evidence.UPSTREAM
@@ -48,6 +46,10 @@ Emit = Callable[[str, dict], None]
 
 # ------------------------------------------------------------------ provider
 def provider_info() -> dict:
+    """Report which LLM provider and primary model are configured, from GEMINI_API_KEYS /
+    GEMINI_API_KEY / GOOGLE_API_KEY (Gemini) or GROQ_API_KEY (Groq); both are None when no key is
+    set.
+    """
     if os.environ.get("GEMINI_API_KEYS") or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"):
         return {"provider": "gemini", "model": os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")}
     if os.environ.get("GROQ_API_KEY"):
@@ -59,12 +61,17 @@ class _Timing(BaseCallbackHandler):
     """Reports every model call (duration, tokens) to the dashboard."""
 
     def __init__(self):
+        """Start with no dashboard emitter or agent label; make_llm() sets them before each agent
+        runs.
+        """
         self.emit, self.agent, self.started = None, None, {}
 
     def on_chat_model_start(self, serialized, messages, *, run_id, **kwargs):
+        """Remember when a model call started, keyed by its LangChain run id."""
         self.started[run_id] = time.monotonic()
 
     def on_llm_end(self, response, *, run_id, **kwargs):
+        """Emit an 'llm_call' agent event with the call's duration and input/output token counts."""
         if not self.emit:
             return
         usage = {}
@@ -84,6 +91,9 @@ EXHAUSTED: set[str] = set()   # models whose free-tier daily quota is used up (t
 
 
 def _quota_kind(error: Exception) -> str | None:
+    """Classify a provider error: 'day' (daily free quota used up), 'minute' (rate limited),
+    'unavailable' (503 overload) or None (any other error).
+    """
     text = str(error)
     if "RESOURCE_EXHAUSTED" not in text and "429" not in text and "rate_limit" not in text.lower():
         return "unavailable" if "503" in text or "UNAVAILABLE" in text else None
@@ -97,6 +107,9 @@ class ModelPool:
     Exposes the three calls the agents use: invoke, bind_tools, with_structured_output."""
 
     def __init__(self, emit: "Emit | None", agent: str):
+        """Build the ordered list of (model, key index, key) slots from the configured primary
+        model, GEMINI_FALLBACK_MODELS and GEMINI_API_KEYS.
+        """
         self.emit, self.agent = emit, agent
         info = provider_info()
         self.provider = info["provider"]
@@ -114,6 +127,9 @@ class ModelPool:
         self.current = info["model"]
 
     def _llm(self, name: str, key: str = ""):
+        """Create the LangChain chat model for one model name and API key (Gemini with low thinking,
+        or Groq), with timing callbacks and no SDK retries.
+        """
         if self.provider == "gemini":
             from langchain_google_genai import ChatGoogleGenerativeAI
             return ChatGoogleGenerativeAI(model=name, temperature=0.2, max_retries=0, google_api_key=key,
@@ -123,10 +139,16 @@ class ModelPool:
         return ChatGroq(model=name, temperature=0.1, max_retries=0, timeout=90, callbacks=[TIMING])
 
     def _note(self, text: str):
+        """Send a 'llm_retry' event to the dashboard explaining a key switch, rate limit or
+        overload.
+        """
         if self.emit:
             self.emit("agent", {"agent": self.agent, "kind": "llm_retry", "text": text})
 
     def call(self, build, messages):
+        """Run one model call through the pool: try each non-exhausted slot in order, skip revoked
+        keys, mark keys whose daily quota is used up, and back off on per-minute limits or 503s.
+        """
         last = None
         for name, index, key in [s for s in self.slots if f"{s[0]}#{s[1]}" not in EXHAUSTED]:
             for attempt in range(4):
@@ -154,38 +176,58 @@ class ModelPool:
         raise RuntimeError(f"all configured free-tier models are unavailable: {last}")
 
     def invoke(self, messages):
+        """Plain chat completion through the pool."""
         return self.call(lambda llm: llm, messages)
 
     def bind_tools(self, tools):
+        """Return a handle whose invoke() calls the model with these tools bound, through the pool."""
         return _Bound(self, lambda llm: llm.bind_tools(tools))
 
     def with_structured_output(self, schema):
+        """Return a handle whose invoke() asks the model for output matching this Pydantic schema,
+        through the pool.
+        """
         return _Bound(self, lambda llm: llm.with_structured_output(schema))
 
 
 class _Bound:
+    """A pool call with a fixed model transformation (tools bound or structured output), so the
+    agents can use it like a LangChain runnable.
+    """
     def __init__(self, pool: ModelPool, build):
+        """Store the pool and the function that turns a raw chat model into the bound variant."""
         self.pool, self.build = pool, build
 
     def invoke(self, messages):
+        """Invoke the bound variant through the pool with the given messages."""
         return self.pool.call(self.build, messages)
 
 
 def make_llm(emit: "Emit | None" = None, agent: str = "") -> ModelPool:
+    """Point the timing callback at this agent's event stream and return a fresh ModelPool."""
     TIMING.emit, TIMING.agent = emit, agent
     return ModelPool(emit, agent)
 
 
 def _text(message) -> str:
+    """Return the plain text of an AI message (handles Gemini's list-of-blocks content), or str() of
+    anything else.
+    """
     return message.text if isinstance(message, AIMessage) else str(message)
 
 
 def _cap(value, limit: int = TOOL_CHARS) -> str:
+    """Serialise a tool result to compact JSON (if needed) and truncate it to the character limit,
+    so tool outputs stay within the model's budget.
+    """
     text = value if isinstance(value, str) else json.dumps(value, separators=(",", ":"), default=str)
     return text if len(text) <= limit else text[:limit] + " ...[truncated]"
 
 
 def _structured(llm, schema: type[BaseModel], messages: list) -> dict:
+    """Ask the model for output matching a Pydantic schema; if native structured output fails, ask
+    for raw JSON and validate it. Returns the validated object as a dict.
+    """
     try:
         result = llm.with_structured_output(schema).invoke(messages)
         if isinstance(result, BaseModel):
@@ -215,6 +257,10 @@ Be concise and specific."""
 # 1. Planner
 # ======================================================================
 class ProposedExperiment(BaseModel):
+    """One experiment proposed by the AI planner: which catalog scenario, target and intensity to
+    run, for how long, how important and risky it is, why, what is expected to happen and what it
+    may affect.
+    """
     scenario: str = Field(description="Scenario id from the catalog")
     target: str = Field(description="Target service (must be allowed for the scenario)")
     variant: str = Field(description="Intensity, one of the scenario's variants")
@@ -227,21 +273,31 @@ class ProposedExperiment(BaseModel):
 
 
 class Plan(BaseModel):
+    """The AI planner's output: a short strategy summary and experiments ranked best first."""
     summary: str = Field(description="2-3 sentences: overall strategy")
     experiments: list[ProposedExperiment] = Field(description="5 experiments ranked best first")
 
 
 class PlanState(TypedDict):
+    """LangGraph state for the planner graph: topology context, raw plan and the validated
+    experiments.
+    """
     context: dict
     plan: dict
     validated: list
 
 
 def plan_experiments(emit: Emit, history: list[dict]) -> dict:
+    """Run the planner agent (topology -> rank -> safety_validator) and return ranked, validated
+    experiment proposals; also emits progress and the final 'plan' event.
+    """
     llm = make_llm(emit, "planner")
     info = provider_info()
 
     def analyse_topology(state: PlanState):
+        """Deterministic step: collect services with their fan-in and user paths, call edges with
+        live call counts, the fault catalog and past run scores into the planner's context.
+        """
         g = topology.graph()
         crit = topology.criticality(g["edges"])
         services = {s: {"user_paths": len(v["endpoints"]), "callers": v["callers"]}
@@ -262,6 +318,9 @@ def plan_experiments(emit: Emit, history: list[dict]) -> dict:
         return {"context": context}
 
     def rank(state: PlanState):
+        """LLM step: rank the most informative or riskiest experiments from the context, covering at
+        least three categories.
+        """
         ctx = state["context"]
         prompt = ("Plan the next chaos experiments for this system. Choose the most informative or "
                   "riskiest experiments first, using the dependency map (fan-in, critical user paths like "
@@ -274,6 +333,9 @@ def plan_experiments(emit: Emit, history: list[dict]) -> dict:
         return {"plan": _structured(llm, Plan, [SystemMessage(SYSTEM), HumanMessage(prompt)])}
 
     def safety_validator(state: PlanState):
+        """Deterministic step: drop unknown scenarios, replace disallowed targets and invalid
+        intensities with safe defaults, clamp durations and number the experiments.
+        """
         out = []
         for i, exp in enumerate(state["plan"]["experiments"]):
             spec = SCENARIOS.get(exp["scenario"])
@@ -317,17 +379,22 @@ def plan_experiments(emit: Emit, history: list[dict]) -> dict:
 # 2. Analyst (+ fixer)
 # ======================================================================
 class Evidence(BaseModel):
+    """One observed fact supporting the report, and the name of the tool whose output shows it."""
     claim: str = Field(description="Specific observed fact with numbers")
     source: str = Field(description="Name of the tool whose output shows it")
 
 
 class Finding(BaseModel):
+    """One weakness the experiment revealed, with its severity and why it matters."""
     severity: Literal["critical", "high", "medium", "low"]
     title: str
     detail: str = Field(description="What weakness the experiment revealed and why it matters")
 
 
 class Recommendation(BaseModel):
+    """One prioritised fix: what to change where, why, and how re-running the experiment proves it
+    worked.
+    """
     priority: Literal["P0", "P1", "P2"]
     title: str
     component: str = Field(description="Service / file to change")
@@ -337,6 +404,9 @@ class Recommendation(BaseModel):
 
 
 class Report(BaseModel):
+    """The analyst's final report for one experiment: verdict on the hypothesis, root cause,
+    customer impact, blast radius, evidence, ranked weaknesses and recommendations.
+    """
     headline: str
     hypothesis_verdict: Literal["confirmed", "partially confirmed", "refuted"]
     verdict_reason: str
@@ -350,6 +420,9 @@ class Report(BaseModel):
 
 
 class Fix(BaseModel):
+    """One minimal code fix as an exact find/replace edit in an application source file, with an
+    explanation and the metric a re-run should improve.
+    """
     file: str = Field(description="Path relative to src/, e.g. payment/index.js")
     title: str
     explanation: str = Field(description="Plain-language explanation of the change and why it fixes the weakness")
@@ -359,11 +432,15 @@ class Fix(BaseModel):
 
 
 class FileChoice(BaseModel):
+    """The source file the fixer should change, chosen from a candidate list, and why."""
     file: str = Field(description="One path from the candidate list")
     reason: str
 
 
 class AnalystState(TypedDict):
+    """LangGraph state for the analyst graph: message history, investigation plan, tool rounds,
+    report, fix, chosen file, fix attempts and errors, and the reviewer's verdict.
+    """
     messages: Annotated[list, add_messages]
     plan: str
     rounds: int
@@ -376,6 +453,10 @@ class AnalystState(TypedDict):
 
 
 def make_tools(run: dict) -> list:
+    """Build the analyst's read-only LangChain tools, each bound to this run's saved record
+    (summary, blast radius, endpoint stats, traces, error spans, logs, container state, source
+    code).
+    """
     @tool
     def get_experiment_summary() -> str:
         """Scenario, injected fault, hypothesis, status/abort reason, per-phase totals, time to first
@@ -452,6 +533,9 @@ def make_tools(run: dict) -> list:
 
 
 def _headline(run: dict) -> str:
+    """One-paragraph summary of a run (scenario, injection, hypothesis, status, success per phase,
+    recovery time, score) used at the top of every analyst prompt.
+    """
     t = run.get("totals", {})
     r = run.get("resilience") or {}
     return (f"Experiment {run['run_id']}: {run['title']} on {run['target']} ({run.get('injection')}). "
@@ -463,6 +547,9 @@ def _headline(run: dict) -> str:
 
 
 def _transcript(messages: list, limit: int = 14000) -> str:
+    """Render the investigator's tool calls, results and notes as text (trimmed to the last
+    characters), for the advisor and fixer prompts.
+    """
     parts = []
     for m in messages:
         if isinstance(m, AIMessage):
@@ -492,52 +579,20 @@ def _candidate_files(run: dict, report: dict) -> list[str]:
     return list(dict.fromkeys(hot + files))[:40]
 
 
-def validate_fix(fix: dict) -> dict:
-    """Deterministic checks: file allowed, `find` unique, patched file passes a syntax check."""
-    rel = fix["file"].strip().lstrip("/").removeprefix("src/")
-    service = rel.split("/")[0]
-    try:
-        if rel not in evidence.list_source(service):
-            return {"ok": False, "error": f"{rel} is not an application source file of {service}"}
-    except PermissionError as error:
-        return {"ok": False, "error": str(error)}
-    original = (UPSTREAM / rel).read_text()
-    count = original.count(fix["find"])
-    if count != 1 or not fix["find"].strip():
-        return {"ok": False, "error": f"`find` must match the file exactly once (matched {count} times). "
-                                       "Copy complete lines verbatim from read_source output, without line numbers."}
-    patched = original.replace(fix["find"], fix["replace"], 1)
-    check = syntax_check(rel, patched)
-    if not check["ok"]:
-        return {"ok": False, "error": f"syntax check failed: {check['output']}"}
-    diff = "".join(difflib.unified_diff(original.splitlines(True), patched.splitlines(True),
-                                        f"a/src/{rel}", f"b/src/{rel}", n=3))
-    return {"ok": True, "file": rel, "diff": diff, "syntax": check, "hot_patchable": rel in HOT_PATCH,
-            "deploy": "hot-patch into running container" if rel in HOT_PATCH
-            else "compiled service: needs an image rebuild (make build) - patch saved only"}
-
-
-def syntax_check(rel: str, text: str) -> dict:
-    suffix = Path(rel).suffix
-    commands = {".js": ["node", "--check"], ".py": ["python3", "-m", "py_compile"], ".rb": ["ruby", "-c"],
-                ".go": ["gofmt", "-e", "-l"]}
-    if suffix not in commands:
-        return {"ok": True, "tool": None, "output": f"no local {suffix} compiler; not syntax-checked"}
-    with tempfile.TemporaryDirectory() as tmp:
-        path = Path(tmp) / Path(rel).name
-        path.write_text(text)
-        result = subprocess.run(commands[suffix] + [str(path)], capture_output=True, text=True, timeout=60)
-    output = (result.stdout + result.stderr).replace(str(path), rel).strip()
-    return {"ok": result.returncode == 0, "tool": " ".join(commands[suffix][:2]), "output": output[:600] or "OK"}
-
-
 def analyse(run: dict, emit: Emit) -> dict:
+    """Run the analyst agent on a finished run (planner -> investigator <-> tools -> advisor ->
+    choose_file -> fixer <-> validator -> reviewer), streaming each step to the dashboard;
+    returns the report, fix and review.
+    """
     llm = make_llm(emit, "analyst")
     info = provider_info()
     tools = make_tools(run)
     investigator_llm = llm.bind_tools(tools)
 
     def planner(state: AnalystState):
+        """LLM step: write a short investigation plan for this run and seed the investigator's
+        conversation with it.
+        """
         reply = llm.invoke([SystemMessage(SYSTEM), HumanMessage(
             _headline(run) + "\nWrite a 3-4 step investigation plan (one line each) naming the evidence "
             "you will check. Tools: " + ", ".join(t.name for t in tools))])
@@ -549,14 +604,21 @@ def analyse(run: dict, emit: Emit) -> dict:
             "enough evidence, reply with a concise summary of findings and no tool calls.")]}
 
     def investigator(state: AnalystState):
+        """LLM step: call evidence tools (several per turn) or, when done, summarise the findings."""
         reply = investigator_llm.invoke([SystemMessage(SYSTEM)] + state["messages"])
         return {"messages": [reply], "rounds": state["rounds"] + 1}
 
     def route(state: AnalystState):
+        """Continue to the tools while the investigator requests tool calls and the round budget
+        allows; otherwise go to the advisor.
+        """
         last = state["messages"][-1]
         return "tools" if getattr(last, "tool_calls", None) and state["rounds"] < MAX_TOOL_ROUNDS else "advisor"
 
     def advisor(state: AnalystState):
+        """LLM step: turn the investigation transcript into the structured Report (verdict, root
+        cause, ranked weaknesses, recommendations).
+        """
         prompt = (f"{_headline(run)}\n\nInvestigation transcript (tool results are ground truth):\n"
                   f"{_transcript(state['messages'])}\n\nWrite the final report. Rank findings (weaknesses) by "
                   "severity. Recommendations must fix what the evidence shows (error classification, "
@@ -566,6 +628,9 @@ def analyse(run: dict, emit: Emit) -> dict:
         return {"report": _structured(llm, Report, [SystemMessage(SYSTEM), HumanMessage(prompt)])}
 
     def choose_file(state: AnalystState):
+        """LLM step: pick the one source file the fix should change, from the target's and blamed
+        services' files (hot-patchable first).
+        """
         candidates = _candidate_files(run, state["report"])
         prompt = (f"Root cause: {state['report']['root_cause']}\nTop recommendation: "
                   + json.dumps(state["report"]["recommendations"][:1]) +
@@ -582,6 +647,9 @@ def analyse(run: dict, emit: Emit) -> dict:
         return {"fix_file": chosen}
 
     def fixer(state: AnalystState):
+        """LLM step: write a minimal find/replace fix in the chosen file from its full source; on a
+        retry, include why the previous fix was rejected.
+        """
         rel = state["fix_file"]
         lines = (UPSTREAM / rel).read_text().splitlines()
         source = "\n".join(lines[:900])
@@ -590,7 +658,10 @@ def analyse(run: dict, emit: Emit) -> dict:
         prompt = (f"{_headline(run)}\n\nRoot cause: {report['root_cause']}\nRecommendations: "
                   + json.dumps(report["recommendations"][:3]) +
                   f"\n\nWrite ONE minimal, safe code fix in {rel} for the most important weakness, as an exact "
-                  "find/replace edit. Keep behaviour for healthy requests identical. `find` must be complete, "
+                  "find/replace edit. The fault-injection code (feature-flag checks that simulate the failure) "
+                  "is part of the experiment: never delete, comment out or bypass it. Make the code more "
+                  "resilient instead (timeouts, fail-fast, retries with idempotency, fallbacks, circuit "
+                  "breakers, correct error mapping). Keep behaviour for healthy requests identical. `find` must be complete, "
                   "contiguous lines copied verbatim from the file below (no line numbers), unique in the file. "
                   f"Set file to {rel}.\n\n=== {rel} ===\n{source}{retry}")
         fix = _structured(llm, Fix, [SystemMessage(SYSTEM), HumanMessage(prompt)])
@@ -598,6 +669,9 @@ def analyse(run: dict, emit: Emit) -> dict:
         return {"fix": fix, "fix_attempts": state["fix_attempts"] + 1}
 
     def validator(state: AnalystState):
+        """Deterministic step: check the fix with fixcheck.validate_fix and record the error (if
+        any) for a retry.
+        """
         result = validate_fix(state["fix"])
         fix = {**state["fix"], "validation": result}
         if result["ok"]:
@@ -605,9 +679,15 @@ def analyse(run: dict, emit: Emit) -> dict:
         return {"fix": fix, "fix_error": "" if result["ok"] else result["error"]}
 
     def fix_route(state: AnalystState):
+        """Send a rejected fix back to the fixer (up to three attempts); otherwise go to the
+        reviewer.
+        """
         return "fixer" if state["fix_error"] and state["fix_attempts"] < 3 else "reviewer"
 
     def reviewer(state: AnalystState):
+        """Deterministic grounding review: count evidence items that cite tools actually called,
+        flag percentages that match no measured value, and record whether the fix is valid.
+        """
         called = {c["name"] for m in state["messages"] if isinstance(m, AIMessage) for c in (m.tool_calls or [])}
         items = state["report"].get("evidence", [])
         measured = set()
@@ -684,6 +764,9 @@ def analyse(run: dict, emit: Emit) -> dict:
 # 3. Campaign report
 # ======================================================================
 class Weakness(BaseModel):
+    """One weakness across the campaign, ranked by severity, with the services and runs that show
+    it, its impact and the recommended fix.
+    """
     rank: int
     severity: Literal["critical", "high", "medium", "low"]
     title: str
@@ -694,6 +777,9 @@ class Weakness(BaseModel):
 
 
 class CampaignReport(BaseModel):
+    """The campaign findings report: executive summary, why the system got its resilience score,
+    ranked weaknesses and follow-up experiments.
+    """
     executive_summary: str
     score_explanation: str = Field(description="Why the system got its resilience score")
     weaknesses: list[Weakness] = Field(description="Ranked most severe first")
@@ -701,16 +787,23 @@ class CampaignReport(BaseModel):
 
 
 def campaign_report(runs: list[dict], analyses: dict, emit: Emit) -> dict:
+    """Run the campaign agent over several runs and their analyses (aggregate -> rank_weaknesses);
+    returns the overall score (mean of run scores) and the ranked report.
+    """
     llm = make_llm(emit, "campaign")
     info = provider_info()
     scores = [r["resilience"]["score"] for r in runs if r.get("resilience")]
     overall = round(sum(scores) / len(scores)) if scores else None
 
     class CState(TypedDict):
+        """LangGraph state for the campaign graph: per-run digest and the final report."""
         digest: list
         report: dict
 
     def aggregate(state: CState):
+        """Deterministic step: summarise each run (experiment, status, score, recovery, blast
+        radius, root cause, findings, fix title).
+        """
         digest = []
         for r in runs:
             a = analyses.get(r["run_id"]) or {}
@@ -725,6 +818,7 @@ def campaign_report(runs: list[dict], analyses: dict, emit: Emit) -> dict:
         return {"digest": digest}
 
     def rank_weaknesses(state: CState):
+        """LLM step: merge and rank weaknesses across all experiments into the CampaignReport."""
         prompt = (f"Overall resilience score (mean of experiments): {overall}/100.\nExperiments:\n"
                   + json.dumps(state["digest"], default=str) +
                   "\n\nWrite the campaign findings report: rank the system's weaknesses by severity across "

@@ -37,6 +37,9 @@ def graph(lookback_min: int = 60) -> dict:
 
 
 def observed_dependencies(lookback_min: int) -> list[dict]:
+    """Service-to-service call counts observed by Jaeger over the lookback window ([] if Jaeger is
+    unreachable).
+    """
     url = f"{jaeger_api()}/dependencies?endTs={int(time.time() * 1000)}&lookback={lookback_min * 60000}"
     try:
         with urlopen(url, timeout=5) as resp:
@@ -67,6 +70,7 @@ def criticality(edges: list[dict]) -> dict[str, dict]:
 
 # --------------------------------------------------------------- per-run stats
 def _p(values: list[float], q: float):
+    """Percentile q of a list (None if empty)."""
     if not values:
         return None
     ordered = sorted(values)
@@ -74,6 +78,9 @@ def _p(values: list[float], q: float):
 
 
 def endpoint_stats(records: list[dict], phase: str) -> dict:
+    """Per customer path for one phase: request count, successes, success %, median and p95 latency,
+    and failures by status.
+    """
     out = {}
     for endpoint in ENDPOINTS:
         rows = [r for r in records if r["phase"] == phase and r["endpoint"] == endpoint]
@@ -95,7 +102,8 @@ def endpoint_stats(records: list[dict], phase: str) -> dict:
 
 def impacted_endpoints(base: dict, fault: dict) -> dict[str, list[str]]:
     """Endpoints whose success dropped >=10 points, or whose *median* latency more than doubled
-    (+250 ms). The median ignores short host-wide stalls that hit every path at once."""
+    (+500 ms). The median ignores short host-wide stalls that hit every path at once, and
+    the 500 ms floor keeps a busy laptop's jitter from counting as blast radius."""
     impacted = {}
     for endpoint, f in fault.items():
         b = base.get(endpoint) or {}
@@ -104,7 +112,7 @@ def impacted_endpoints(base: dict, fault: dict) -> dict[str, list[str]]:
         reasons = []
         if b["success"] - f["success"] >= 10 and f["n"] - f["ok"] >= 2:
             reasons.append(f"success {b['success']}% -> {f['success']}%")
-        if f["p50"] and b.get("p50") and f["p50"] > 2 * b["p50"] + 250:
+        if f["p50"] and b.get("p50") and f["p50"] > 2 * b["p50"] + 500:
             reasons.append(f"median {b['p50']} -> {f['p50']} ms (p95 {b.get('p95')} -> {f['p95']} ms)")
         if reasons:
             impacted[endpoint] = reasons
@@ -112,6 +120,10 @@ def impacted_endpoints(base: dict, fault: dict) -> dict[str, list[str]]:
 
 
 def blast_radius(target: str, edges: list[dict], base: dict, fault: dict, span_errors: dict) -> dict:
+    """Compare the fault phase with the baseline: which paths depend on the target, which were
+    impacted, which were impacted unexpectedly, which services showed errors, and whether the
+    impact stayed contained.
+    """
     expected_eps = sorted(k for k, v in ENDPOINTS.items() if target in v["services"])
     impacted = impacted_endpoints(base, fault)
     unexpected = sorted(set(impacted) - set(expected_eps))

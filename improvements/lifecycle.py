@@ -14,11 +14,13 @@ from .patches import sha256
 
 
 def fingerprint(value: dict) -> str:
+    """Stable SHA-256 of a dict (sorted keys, compact JSON)."""
     return sha256(json.dumps(value, sort_keys=True, separators=(',', ':')).encode())
 
 
 @dataclass(frozen=True)
 class TestReceipt:
+    """Proof that a given checks suite ran against an exact patch and base, and whether it passed."""
     base_revision: str
     diff_sha256: str
     checks: tuple[str, ...]
@@ -26,11 +28,13 @@ class TestReceipt:
     log_sha256: str
 
     def digest(self) -> str:
+        """Fingerprint of the receipt."""
         return fingerprint(vars(self))
 
 
 @dataclass(frozen=True)
 class Approval:
+    """A reviewer's approval bound to the exact patch, base, test receipt, sandbox and images."""
     patch_id: str
     diff_sha256: str
     base_revision: str
@@ -41,6 +45,9 @@ class Approval:
 
 
 def approve(patch: Patch, tests: TestReceipt, sandbox: SandboxRef, reviewer: str) -> Approval:
+    """Approve a patch only if its tests passed for this exact diff and base and a reviewer is
+    named.
+    """
     if (not reviewer.strip() or tests.passed is not True or not tests.checks or "application-tests" not in tests.checks
             or tests.base_revision != patch.base_revision or tests.diff_sha256 != patch.diff_sha256):
         raise ValueError('approval requires passing tests for this exact patch and a reviewer')
@@ -51,6 +58,7 @@ def approve(patch: Patch, tests: TestReceipt, sandbox: SandboxRef, reviewer: str
 
 @dataclass(frozen=True)
 class DeploymentContext:
+    """Facts about the sandbox that must hold before a patch may be deployed."""
     sandbox: SandboxRef
     isolation_approved: bool = False
     backend_gates_passed: bool = False
@@ -60,19 +68,27 @@ class DeploymentContext:
 
 
 class DeploymentBackend(Protocol):
+    """Interface for something that can deploy images transactionally (with rollback)."""
     # Implementations must own a persistent exclusive lock shared with experiment
     # creation, identity revalidation, health deadlines and crash supervision.
     def deploy_transaction(self, images: dict[str, str], rollback_images: dict[str, str],
-                           sandbox: SandboxRef) -> dict: ...
+                           sandbox: SandboxRef) -> dict:
+        """Swap to the new images, rolling back to the given images on failure."""
+        ...
 
 
 class DisabledBackend:
+    """Default backend: live patch deployment is turned off."""
     def deploy_transaction(self, *args, **kwargs):
+        """Always refuse: live deployment is not available."""
         raise ValueError('live patch deployment unavailable until P2/P3 integration is verified')
 
 
 def deploy(patch: Patch, tests: TestReceipt, approval: Approval,
            context: DeploymentContext, backend: DeploymentBackend | None = None) -> dict:
+    """Deploy an approved patch only if the approval is still current, isolation is approved, no run
+    is active and recovery was verified.
+    """
     expected = approve(patch, tests, context.sandbox, approval.approved_by)
     if expected != approval:
         raise ValueError('approval is stale: patch, tests, base or target changed')
@@ -91,12 +107,14 @@ def deploy(patch: Patch, tests: TestReceipt, approval: Approval,
 
 
 def re_digest(image: str) -> bool:
+    """Whether an image reference is pinned by sha256 digest."""
     import re
     return bool(re.fullmatch(r'[^\s@]+@sha256:[0-9a-f]{64}', image))
 
 
 @dataclass(frozen=True)
 class ReplayEvidence:
+    """What is needed to compare an original run with its replay after a patch."""
     run_id: str
     capability_id: str
     parameters_digest: str
@@ -119,6 +137,9 @@ class ReplayEvidence:
 
 
 def compare(original: ReplayEvidence, replay: ReplayEvidence) -> dict:
+    """Compare an original run and its replay: list what did not match and decide whether the
+    comparison is valid.
+    """
     matched = ('capability_id', 'parameters_digest', 'workload_version', 'workload_digest',
                'policy_version', 'sandbox_digest')
     limits = [f'unmatched {key}' for key in matched if getattr(original, key) != getattr(replay, key)]

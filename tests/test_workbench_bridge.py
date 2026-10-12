@@ -14,6 +14,7 @@ from workbench.bridge import WorkbenchBridge
 
 @pytest.fixture
 def connected(tmp_path):
+    """Fixture: the controller API with the workbench bridge on a free port over temp files."""
     flag = tmp_path / 'demo.flagd.json'
     shutil.copy(FLAG_FILE, flag)
     api = ControllerAPI(db_path=tmp_path/'runs.sqlite3', root=tmp_path,
@@ -28,6 +29,7 @@ def connected(tmp_path):
 
 
 def test_connected_assets_readiness_and_no_repository_exposure(connected):
+    """The bridge serves its assets and readiness and never other repository files."""
     client, api, _ = connected
     status, html = client.call('GET', '/')
     assert status == 200 and 'Payment workbench' in html
@@ -40,6 +42,7 @@ def test_connected_assets_readiness_and_no_repository_exposure(connected):
 
 
 def test_preview_plan_uses_real_contract_and_policy(connected):
+    """Plan previews use the real contracts and policy."""
     client, _, _ = connected
     plan = make_plan(duration=1).model_dump(mode='json')
     status, body = client.call('POST', '/api/workbench/plans/validate',
@@ -51,6 +54,7 @@ def test_preview_plan_uses_real_contract_and_policy(connected):
 
 
 def test_durable_idempotency_events_and_free_diagnosis(connected):
+    """Runs are idempotent, events are durable and the rule diagnosis needs no model."""
     client, api, flag = connected
     before = flag.read_bytes()
     body = {'plan': make_plan(duration=1).model_dump(mode='json')}
@@ -77,6 +81,7 @@ def test_durable_idempotency_events_and_free_diagnosis(connected):
 
 
 def test_baseline_run_mutex_and_boolean_execution(connected):
+    """Baseline capture and runs exclude each other and 'live' must be a real boolean."""
     client, api, _ = connected
     body = {'plan': make_plan(duration=1).model_dump(mode='json'), 'live': 'false'}
     assert client.call('POST', '/api/v1/runs', body)[0] == 400

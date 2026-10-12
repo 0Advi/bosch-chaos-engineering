@@ -10,11 +10,15 @@ RUNS_DIR = Path(__file__).resolve().parents[1] / "artifacts" / "demo-runs"
 
 
 def _load(name: str):
+    """Load a JSON file from artifacts/demo-runs, or None if it does not exist."""
     path = RUNS_DIR / name
     return json.loads(path.read_text()) if path.exists() else None
 
 
 def _run_section(run: dict, analysis: dict | None, comparison: dict | None) -> list[str]:
+    """Markdown section for one run: scenario, score, success per phase, recovery, blast radius, AI
+    verdict, weaknesses, recommendations, fix diff and auto-fix comparison.
+    """
     r = run.get("resilience") or {}
     t = run.get("totals") or {}
     blast = run.get("blast_radius") or {}
@@ -55,6 +59,9 @@ def _run_section(run: dict, analysis: dict | None, comparison: dict | None) -> l
 
 
 def markdown(campaign_id: str | None, run_id: str | None) -> tuple[str, str]:
+    """Build the downloadable findings report for a campaign (summary, ranked weaknesses, every run)
+    or a single run; returns (text, filename).
+    """
     lines = ["# Chaos engineering findings report", "",
              "System under test: OpenTelemetry Astronomy Shop 3.1.0 (25 services, Docker Compose sandbox).", ""]
     if campaign_id:

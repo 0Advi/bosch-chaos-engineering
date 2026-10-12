@@ -46,16 +46,20 @@ STATUS = {
 
 
 class ApiError(Exception):
+    """An API failure with a stable error code, a message, an HTTP status and extra details."""
     def __init__(self, code: str, message: str, status: Optional[int] = None, **details):
+        """Create the error; the HTTP status defaults from the code (422 when unknown)."""
         super().__init__(message)
         self.code, self.message, self.details = code, message, details
         self.status = status or STATUS.get(code, 422)
 
     def body(self) -> dict:
+        """The JSON error body returned to the client."""
         return {"ok": False, "error": self.code, "message": self.message, **self.details}
 
 
 def _loopback(host: str) -> bool:
+    """True if the host is a loopback address or 'localhost'."""
     try:
         return ipaddress.ip_address(host).is_loopback
     except ValueError:
@@ -73,6 +77,9 @@ class ControllerAPI:
                  baselines_dir: Path = ROOT / "artifacts" / "baselines", root: Path = ROOT,
                  stream_poll: float = 0.25, log: Callable[[str], None] = lambda line: None,
                  provider_factory: Optional[Callable] = None, telemetry_factory: Optional[Callable] = None):
+        """Configure the API's run store, results directory, sandbox environment, limits, gates,
+        allowed origins, baseline runner, model and telemetry factories.
+        """
         self.db_path, self.results_dir = db_path, results_dir or db_path.parent
         self.env_factory, self.limits, self.gate_check = env_factory, limits, gate_check
         self.allowed_origins = set(allowed_origins)
@@ -85,11 +92,17 @@ class ControllerAPI:
         RunStore(db_path)  # create schema once
 
     def store(self) -> RunStore:
+        """A fresh run-store connection (one per request, so SQLite transactions never interleave
+        across threads).
+        """
         # One SQLite connection per request: transactions must not interleave across threads.
         return RunStore(self.db_path)
 
     # ------------------------------------------------------------- views
     def run_view(self, run: dict, events=None) -> dict:
+        """Summary of a run for API clients: state, stop reason, cleanup status, abort flag, last
+        event and links to its sub-resources.
+        """
         store_events = events if events is not None else self.store().events(run["run_id"])
         report = build_report(run, store_events, self.root)
         return {"run_id": run["run_id"], "capability_id": run["capability_id"], "state": run["state"],
@@ -102,21 +115,26 @@ class ControllerAPI:
 
     # ------------------------------------------------------------ handlers
     def health(self, _req) -> dict:
+        """API health: version, policy version, active runs and runs needing attention."""
         active = self.store().active_runs()
         return {"ok": True, "api_version": API_VERSION, "policy_version": load_policy()["policy_version"],
                 "active_runs": [r["run_id"] for r in active],
                 "needs_attention": [r["run_id"] for r in active if r["state"] == S.NEEDS_ATTENTION.value]}
 
     def capabilities(self, _req) -> dict:
+        """GET /capabilities: the capability catalog."""
         return self._tool("list_capabilities", {})
 
     def capability(self, _req, cap_id: str) -> dict:
+        """GET /capabilities/<id>: one capability's contract."""
         return self._tool("describe_capability", {"capability_id": cap_id})
 
     def preflight(self, _req) -> dict:
+        """GET /preflight: the sandbox identity and scope report."""
         return {"ok": True, **self.env_factory().sandbox_report().as_dict()}
 
     def propose(self, req) -> tuple[int, dict]:
+        """POST /plans: build a validated user plan for a capability (nothing executes)."""
         body = req.json()
         baseline_ref = body.pop("baseline_ref", None) if isinstance(body, dict) else None
         plan = self._tool("propose_plan", body)["result"]
@@ -127,10 +145,14 @@ class ControllerAPI:
             raise ApiError("INVALID_PLAN", "plan does not match the contract", problems=_problems(error))
 
     def validate_plan(self, req) -> dict:
+        """POST /plans/validate: dry-run a plan through every gate."""
         plan = self._plan(req.json().get("plan"))
         return {"ok": True, **runner.dry_run(plan)}
 
     def list_baselines(self, _req) -> dict:
+        """GET /baselines: saved baselines with health, finish time and blocking issues, newest
+        first.
+        """
         rows = []
         for path in sorted(self.baselines_dir.glob("baseline-*.json"), reverse=True):
             if path.name.endswith(".observations.jsonl"):
@@ -146,10 +168,12 @@ class ControllerAPI:
         return {"ok": True, "baselines": rows, "job": self._job_view()}
 
     def start_baseline(self, req) -> tuple[int, dict]:
+        """POST /baselines: start a baseline capture job."""
         req.json()  # mutation requests must carry a JSON body (may be {})
         return 202, self.start_baseline_job()
 
     def start_baseline_job(self) -> dict:
+        """Start a background baseline capture unless one is running or a fault run is active."""
         if self.baseline_runner is None:
             from ..cli import live_baseline_runner
             self.baseline_runner = live_baseline_runner
@@ -163,10 +187,12 @@ class ControllerAPI:
         return {"ok": True, "job": self._job_view()}
 
     def list_runs(self, req) -> dict:
+        """GET /runs: the most recent runs."""
         limit = int(req.query.get("limit", ["20"])[0])
         return {"ok": True, "runs": [self.run_view(r) for r in self.store().recent_runs(limit)]}
 
     def create_run(self, req) -> tuple[int, dict]:
+        """POST /runs: dry-run a plan, or start it live when live is true and every gate passes."""
         body = req.json()
         plan = self._plan(body.get("plan"))
         if "live" in body and not isinstance(body["live"], bool):
@@ -196,16 +222,22 @@ class ControllerAPI:
         return {"ok": True, **self.run_view(self.store().get(run_id))}
 
     def run_summary(self, run_id: str) -> dict:
+        """Summary of one run."""
         return self.run_view(self._run(run_id))
 
     def run_events(self, run_id: str, after_seq: int = 0) -> list[dict]:
+        """A run's events after a sequence number."""
         self._run(run_id)
         return [e.model_dump(mode="json") for e in self.store().events(run_id, after_seq)]
 
     def run_report(self, run_id: str) -> dict:
+        """A run's report as a dict."""
         return self.report(None, run_id)["report"]
 
     def abort_run(self, run_id: str) -> dict:
+        """Record an abort request for an active run (the controller or watchdog restores and
+        verifies).
+        """
         self._run(run_id)
         if not self.store().request_abort(run_id):
             raise ApiError("NOT_ACTIVE", "run is already finished")
@@ -214,6 +246,7 @@ class ControllerAPI:
 
     # ------------------------------------------------------- P4 diagnosis
     def diagnose(self, req, run_id: str) -> tuple[int, dict]:
+        """POST /runs/<id>/diagnosis: diagnose a finished run with the model or the rule baseline."""
         body = req.json()
         diagnoser = body.get("diagnoser", "model")
         if diagnoser not in ("model", "baseline"):
@@ -229,6 +262,7 @@ class ControllerAPI:
         return status, {"ok": result.status != "failed", "diagnosis": result.model_dump(mode="json")}
 
     def get_diagnosis(self, _req, run_id: str) -> dict:
+        """GET /runs/<id>/diagnosis: the saved diagnosis."""
         self._run(run_id)
         path = run_dir(self.results_dir, run_id) / "diagnosis.json"
         if not path.is_file():
@@ -236,9 +270,11 @@ class ControllerAPI:
         return {"ok": True, "diagnosis": json.loads(path.read_text())}
 
     def get_run(self, _req, run_id: str) -> dict:
+        """GET /runs/<id>: one run."""
         return {"ok": True, **self.run_view(self._run(run_id))}
 
     def events(self, req, run_id: str) -> dict:
+        """GET /runs/<id>/events: events after after_seq."""
         self._run(run_id)
         after = int(req.query.get("after_seq", ["0"])[0])
         events = self.store().events(run_id, after)
@@ -246,10 +282,14 @@ class ControllerAPI:
                 "events": [e.model_dump(mode="json") for e in events]}
 
     def abort(self, req, run_id: str) -> tuple[int, dict]:
+        """POST /runs/<id>/abort: request an abort."""
         req.json()
         return 202, self.abort_run(run_id)
 
     def report(self, req, run_id: str, fmt: str = "json"):
+        """GET /runs/<id>/report: the run report as JSON or Markdown (exports evidence first when
+        the run has finished).
+        """
         run = self._run(run_id)
         if S(run["state"]) in TERMINAL or run["state"] == S.NEEDS_ATTENTION.value:
             export_run(self.store(), run_id, self.results_dir, self.root)
@@ -259,6 +299,7 @@ class ControllerAPI:
         return {"ok": True, "report": report.model_dump(mode="json")}
 
     def evidence(self, _req, run_id: str) -> dict:
+        """GET /runs/<id>/evidence: the exported evidence files and their links."""
         self._run(run_id)
         directory = run_dir(self.results_dir, run_id)
         files = [name for name in FILES if (directory / name).exists()]
@@ -266,6 +307,7 @@ class ControllerAPI:
                 "links": {n: f"/api/v1/runs/{run_id}/evidence/{n}" for n in files}}
 
     def evidence_file(self, _req, run_id: str, name: str):
+        """GET /runs/<id>/evidence/<name>: one allowlisted evidence file."""
         self._run(run_id)
         if name not in FILES:          # allowlist, so no path can escape the run directory
             raise ApiError("NOT_FOUND", "unknown evidence file")
@@ -278,6 +320,9 @@ class ControllerAPI:
 
     # ---------------------------------------------------------- internals
     def _drive(self, run, run_id, plan, cap, params) -> None:
+        """Background thread: drive a live run to its end, record controller errors, then export its
+        evidence.
+        """
         try:
             run.drive(run_id, plan, cap, params)
         except Exception as error:  # surfaced in the journal; restoration is the watchdog's job
@@ -289,6 +334,7 @@ class ControllerAPI:
                 self.log(f"evidence export failed for {run_id}: {error}")
 
     def _baseline_job(self) -> None:
+        """Background thread: run the baseline capture and record success or failure on the job."""
         try:
             baseline, path = self.baseline_runner()
             self.baseline_job.update(state="succeeded", baseline_id=baseline.baseline_id,
@@ -298,15 +344,18 @@ class ControllerAPI:
             self.baseline_job.update(state="failed", error=str(error)[:300])
 
     def _job_view(self) -> Optional[dict]:
+        """The current baseline job state, or None."""
         return dict(self.baseline_job) or None
 
     def _run(self, run_id: str) -> dict:
+        """Load a run or raise UNKNOWN_RUN."""
         try:
             return self.store().get(run_id)
         except KeyError:
             raise ApiError("UNKNOWN_RUN", f"no run {run_id}")
 
     def _plan(self, data) -> Plan:
+        """Validate a request body's plan against the Plan contract."""
         if not isinstance(data, dict):
             raise ApiError("INVALID_PLAN", "body must contain a plan object")
         try:
@@ -315,6 +364,7 @@ class ControllerAPI:
             raise ApiError("INVALID_PLAN", "plan does not match the contract", problems=_problems(error))
 
     def _tool(self, name: str, args) -> dict:
+        """Call one agent tool through the registry, turning its error results into ApiError."""
         out = ToolRegistry().dispatch(name, args if isinstance(args, dict) else {"_": args})
         if not out["ok"]:
             raise ApiError(out["error"], out.get("message", ""),
@@ -323,11 +373,13 @@ class ControllerAPI:
 
 
 def _default_provider():
+    """The model provider for API diagnoses (Claude)."""
     from ..agent.providers import AnthropicProvider
     return AnthropicProvider()
 
 
 def _problems(error: ValidationError) -> list[str]:
+    """Readable 'field: message' list from a validation error."""
     return [f"{'.'.join(map(str, e['loc']))}: {e['msg']}" for e in error.errors()]
 
 
@@ -358,18 +410,26 @@ COMPILED = [(m, re.compile(f"^{p}$"), h) for m, p, h in ROUTES]
 
 
 def make_handler(api: ControllerAPI, port: int):
+    """Build the HTTP handler class for this API and port, with Host and Origin checks, security
+    headers, routing, errors and event streaming.
+    """
     hosts = {f"127.0.0.1:{port}", f"localhost:{port}", f"[::1]:{port}"}
     origins = {f"http://127.0.0.1:{port}", f"http://localhost:{port}"} | api.allowed_origins
 
     class Handler(BaseHTTPRequestHandler):
+        """HTTP handler for the controller API (and the workbench bridge when attached)."""
         protocol_version = "HTTP/1.1"
         server_version = "bosch-chaos-controller"
 
         def log_message(self, fmt, *args):
+            """Send access-log lines to the API's logger."""
             api.log(fmt % args)
 
         # ------------------------------------------------------- plumbing
         def _send(self, status: int, body, ctype: str = "application/json") -> None:
+            """Send a JSON or text response with no-store caching, security headers and CORS for
+            allowed origins.
+            """
             data = body.encode() if isinstance(body, str) else json.dumps(body, default=str).encode()
             self.send_response(status)
             self.send_header("Content-Type", ctype)
@@ -385,6 +445,7 @@ def make_handler(api: ControllerAPI, port: int):
             self.wfile.write(data)
 
         def json(self):
+            """Parse and cache the request body, which must be a JSON object."""
             if self._json is None:
                 length = int(self.headers.get("Content-Length") or 0)
                 raw = self.rfile.read(length) if length else b"{}"
@@ -397,6 +458,9 @@ def make_handler(api: ControllerAPI, port: int):
             return self._json
 
         def _guard(self, mutating: bool) -> None:
+            """Reject requests not addressed to the loopback controller; mutations also need an
+            allowed origin, a JSON content type and a bounded body.
+            """
             if self.headers.get("Host") not in hosts:
                 raise ApiError("HOST_REJECTED", "requests must address the loopback controller")
             origin = self.headers.get("Origin")
@@ -414,6 +478,9 @@ def make_handler(api: ControllerAPI, port: int):
                     raise ApiError("PAYLOAD_TOO_LARGE", f"bodies are limited to {MAX_BODY} bytes")
 
         def _dispatch(self, method: str) -> None:
+            """Route a request to the workbench bridge or the matching API method and send the
+            result or a structured error.
+            """
             self._json = None
             url = urlparse(self.path)
             self.query = parse_qs(url.query)
@@ -447,12 +514,15 @@ def make_handler(api: ControllerAPI, port: int):
                 self._send(500, {"ok": False, "error": "INTERNAL_ERROR", "message": "Controller request failed; check the local log."})
 
         def do_GET(self):
+            """Handle GET requests."""
             self._dispatch("GET")
 
         def do_POST(self):
+            """Handle POST requests."""
             self._dispatch("POST")
 
         def do_OPTIONS(self):
+            """Answer CORS preflight requests for allowed origins only."""
             origin = self.headers.get("Origin")
             if origin not in origins:
                 return self._send(403, {"ok": False, "error": "ORIGIN_REJECTED", "message": "origin not allowed"})

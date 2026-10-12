@@ -32,15 +32,25 @@ PROPAGATION_S = 2
 
 
 class Aborted(Exception):
+    """Raised to stop a run early: operator kill switch, a tripped guardrail or a failed health
+    gate.
+    """
     pass
 
 
 def _now() -> str:
+    """Current time as an ISO-8601 UTC string."""
     return datetime.now(timezone.utc).isoformat()
 
 
 class Experiment:
+    """One guarded, self-restoring chaos experiment: drives the workload, injects and restores the
+    fault, checks guardrails, measures recovery and collects evidence.
+    """
     def __init__(self, params: dict, emit: Callable[[str, dict], None]):
+        """Validate the scenario, target and intensity, clamp durations and guardrails to the safety
+        limits, and prepare the injection and synthetic workload.
+        """
         sid = params.get("scenario", "payment-failure")
         if sid not in SCENARIOS:
             raise ValueError(f"unknown scenario {sid}")
@@ -56,6 +66,7 @@ class Experiment:
         self.spec, self.variant, self.emit = spec, variant, emit
         self.run_id = datetime.now().strftime("run-%Y%m%d-%H%M%S-") + uuid4().hex[:4]
         self.stop = threading.Event()
+        self.end_fault = threading.Event()   # presenter's "End fault now": restore, run counts as completed
         self._strike = False
         self.timeline: dict[str, float] = {}
         self.label = params.get("label")
@@ -65,19 +76,27 @@ class Experiment:
 
     # ------------------------------------------------------------- helpers
     def mark(self, name: str, **extra):
+        """Record when a phase starts (seconds since the workload began) and emit a 'phase' event."""
         self.timeline[name] = self.workload.t()
         self.emit("phase", {"name": name, "t": self.timeline[name], **extra})
 
-    def wait(self, seconds: float, check: Callable[[], None] | None = None):
+    def wait(self, seconds: float, check: Callable[[], None] | None = None, endable: bool = False):
+        """Sleep for a phase in 1 s steps, raising Aborted on the kill switch, running the guardrail
+        check if given, and returning early on 'End fault now' when endable.
+        """
         end = time.monotonic() + seconds
         while time.monotonic() < end:
             if self.stop.is_set():
                 raise Aborted("operator abort (kill switch)")
+            if endable and self.end_fault.is_set():
+                self.emit("log", {"level": "info", "message": "Fault ended early by the presenter"})
+                return
             if check:
                 check()
             time.sleep(1)
 
     def params(self) -> dict:
+        """The parameters needed to re-run this exact experiment (used by auto-fix)."""
         return {"scenario": self.spec["id"], "target": self.spec["target"], "variant": self.variant,
                 "baseline_s": self.durations["baseline"], "fault_s": self.durations["fault"],
                 "recovery_s": self.durations["recovery"], "guardrails": self.guard}
@@ -114,18 +133,28 @@ class Experiment:
             self.emit("log", {"level": "warn", "message": f"Guardrail warning (stops if it persists): {breaches[0]}"})
         self._strike = bool(breaches)
 
-    def healthy_again(self, since: float) -> bool:
+    def recovery_progress(self, since: float) -> tuple[int, int]:
+        """(paths healthy again, paths that were healthy in the baseline) since the restore."""
         rows = [r for r in self.workload.records if r["t"] >= since]
-        for ep, base in self.base_stats.items():
-            if not base["n"] or base["success"] < 90:
-                continue
+        wanted = [ep for ep, base in self.base_stats.items() if base["n"] and base["success"] >= 90]
+        healthy = 0
+        for ep in wanted:
             mine = [r for r in rows if r["endpoint"] == ep]
-            if not mine or not mine[-1]["ok"]:
-                return False
-        return True
+            healthy += bool(mine and mine[-1]["ok"])
+        return healthy, len(wanted)
+
+    def healthy_again(self, since: float) -> bool:
+        """True once every path that was healthy in the baseline has succeeded on its latest request
+        since the restore.
+        """
+        healthy, wanted = self.recovery_progress(since)
+        return healthy == wanted
 
     # ------------------------------------------------------------------ run
     def run(self) -> dict:
+        """Run the whole experiment: baseline, health gate, inject, guarded fault window, restore,
+        measure recovery, then collect evidence, score and save the run record.
+        """
         spec = self.spec
         self.record = {"run_id": self.run_id, "scenario": spec["id"], "title": spec["title"],
                        "category": spec["category"], "kind": spec["kind"], "target": spec["target"],
@@ -167,7 +196,7 @@ class Experiment:
             self.wait(PROPAGATION_S)
             self.workload.phase = "fault"
             self.mark("fault")
-            self.wait(self.durations["fault"], self.check_guardrails)
+            self.wait(self.durations["fault"], self.check_guardrails, endable=True)
         except Aborted as error:
             outcome, reason = "aborted", str(error)
             self.emit("log", {"level": "warn", "message": str(error)})
@@ -184,11 +213,17 @@ class Experiment:
         if applied:
             restored_at = self.timeline["restore"]
             deadline = time.monotonic() + RECOVERY_LIMIT_S
+            last_note = 0.0
             while time.monotonic() < deadline and not self.stop.is_set():
                 time.sleep(0.5)
                 if self.healthy_again(restored_at):
                     ttr = round(self.workload.t() - restored_at, 2)
                     break
+                if time.monotonic() - last_note > 3:   # clients may need a while to reconnect
+                    last_note = time.monotonic()
+                    healthy, wanted = self.recovery_progress(restored_at)
+                    self.emit("log", {"level": "info", "message": f"Fault removed; waiting for the shop to "
+                                      f"heal ({healthy}/{wanted} customer paths healthy again)"})
             self.mark("recovered" if ttr is not None else "not_recovered", ttr=ttr)
             self.workload.phase = "recovery"
             try:
@@ -207,6 +242,9 @@ class Experiment:
         return self.record
 
     def summarize(self, outcome, reason, restore_results, applied, ttr, graph, before, after) -> dict:
+        """Build the run's results: per-phase and per-path stats, blast radius, resilience score,
+        time to impact and recovery, traces, logs, container state and span-metric deltas.
+        """
         records = self.workload.records
         stats = {p: topology.endpoint_stats(records, p) for p in ("baseline", "fault", "restoring", "recovery")}
         span_errors = evidence.service_delta(before, after)
@@ -246,6 +284,7 @@ class Experiment:
         }
 
     def save(self):
+        """Write the run record to artifacts/demo-runs/<run_id>.json."""
         RUNS_DIR.mkdir(parents=True, exist_ok=True)
         (RUNS_DIR / f"{self.run_id}.json").write_text(json.dumps(self.record, default=str))
 
@@ -271,7 +310,11 @@ def wait_until_healthy(emit: Callable[[str, dict], None], limit_s: float = 120) 
 
 
 def install_restore_handlers():
+    """Make sure every journaled fault is restored when the process exits or receives Ctrl-C /
+    SIGTERM.
+    """
     def handler(signum, _frame):
+        """Signal handler: restore all faults, then exit with the conventional signal exit code."""
         faults.restore_all()
         raise SystemExit(128 + signum)
     atexit.register(faults.restore_all)

@@ -1,6 +1,8 @@
 "use strict";
 const $ = (s) => document.querySelector(s);
+/** Escape a value for safe insertion into HTML. */
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+/** Format a value with a unit, or a dash when missing. */
 const fmt = (v, unit = "") => (v === null || v === undefined ? "–" : `${v}${unit}`);
 
 let status = null, plan = null, graph = null, source = null, evTab = "trace";
@@ -10,9 +12,11 @@ let campaign = null;             // {id, experiments, index, report}
 let feed = [];
 let busy = false;
 
+/** Empty state for the experiment shown in the live panels. */
 function freshLive() { return { run: null, records: [], timeline: {}, record: null, guard: null }; }
 
 // =================================================================== status
+/** Fetch /api/status and render the health, LLM and safety chips, scenario designer and run history. */
 async function loadStatus() {
   status = await (await fetch("/api/status")).json();
   busy = status.busy;
@@ -33,6 +37,7 @@ async function loadStatus() {
   setBusy(busy);
 }
 
+/** Fill the scenario picker (grouped by category) from the status catalog. */
 function buildDesigner() {
   const groups = {};
   for (const [id, s] of Object.entries(status.scenarios)) (groups[s.category] ||= []).push([id, s]);
@@ -41,6 +46,54 @@ function buildDesigner() {
   pickScenario("payment-failure");
 }
 
+let shopView = null, shopWin = null;
+/** The shop's base URL. */
+const shopUrl = () => (status && status.shop_url) || "http://localhost:8081";
+
+/** Fetch where the selected fault shows up in the shop and render that hint. */
+async function loadShopView() {
+  const sid = $("#scenario").value, target = $("#target").value;
+  shopView = await (await fetch(`/api/shop-view?scenario=${encodeURIComponent(sid)}&target=${encodeURIComponent(target)}`)).json();
+  if ($("#presenter").checked) applyPresenterDefaults();
+  renderShopView();
+}
+
+/**
+ * Render the 'See it in the shop' panel: which page to open, what to look for and how visible it
+ * is.
+ */
+function renderShopView() {
+  const v = shopView;
+  if (!v || !v.path) { $("#shopview").innerHTML = ""; return; }
+  const label = { high: "clearly visible", medium: "visible if you look", low: "subtle", none: "not visible to customers" }[v.visibility];
+  $("#shopview").innerHTML = `<div class="sv-head"><span class="sv-title">See it in the shop</span>
+      <span class="vis ${esc(v.visibility)}">${esc(label)}</span>
+      <button id="open-shop" title="Opens (or reuses) a shop tab">Open shop at ${esc(v.path)} ↗</button></div>
+    <ol>${v.steps.map((x) => `<li>${esc(x)}</li>`).join("")}<li>${$("#presenter").checked
+      ? "Presenter mode reloads the shop tab you opened with the button above when FAULT LIVE starts"
+      : "Reload the shop tab once FAULT LIVE shows (pages already loaded keep their old data)"}</li></ol>
+    <div class="sv-expect"><b>You should see:</b> ${esc(v.expect)}</div>`;
+  $("#open-shop").onclick = () => openShop();
+}
+
+/** Open the shop page affected by the selected scenario in a named tab. */
+function openShop() {
+  if (!shopView) return;
+  shopWin = window.open(shopUrl() + shopView.path, "chaos-shop");
+}
+
+/** In presenter mode, use the scenario's most visible variant and longer fault window. */
+function applyPresenterDefaults() {
+  const p = (shopView && shopView.presenter) || {};
+  if (p.variant && [...$("#variant").options].some((o) => o.value === p.variant)) $("#variant").value = p.variant;
+  $("#fault_s").value = Math.min(60, p.fault_s || 60);
+  $("#baseline_s").value = 6;
+}
+
+/**
+ * Select a scenario (and optionally target and variant) in the designer and update its options and
+ * hypothesis.
+ */
 function pickScenario(id, target, variant) {
   const s = status.scenarios[id];
   $("#scenario").value = id;
@@ -51,8 +104,10 @@ function pickScenario(id, target, variant) {
   $("#variant").innerHTML = s.variants.map((v) => `<option>${esc(v)}</option>`).join("");
   $("#variant").value = variant && s.variants.includes(variant) ? variant : s.default;
   if (!live.run) $("#hypothesis").textContent = s.hypothesis.replaceAll("{target}", $("#target").value);
+  loadShopView();
 }
 
+/** Enable or disable the action buttons while a job runs. */
 function setBusy(b) {
   busy = b;
   for (const id of ["#run", "#plan-btn", "#campaign-btn", "#hero-plan", "#hero-run"]) $(id).disabled = b || (id === "#campaign-btn" && !plan?.experiments?.length);
@@ -62,6 +117,10 @@ function setBusy(b) {
 
 // =================================================================== events
 let lastSeq = 0, phaseClock = null, lostSince = null;
+/**
+ * Open the server-sent event stream and route each event to handle(); reconnects resume after the
+ * last sequence.
+ */
 function connect() {
   if (source) source.close();
   lastSeq = 0;
@@ -91,17 +150,27 @@ setInterval(async () => {
     } catch { line("Lab server is not reachable. Start it with: python -m demo.server", "error"); }
     return;
   }
-  if (!phaseClock || !live.run) return;
+  if (!phaseClock || !live.run) { document.title = "AI Chaos Lab"; return; }
   const secs = Math.round((Date.now() - phaseClock.at) / 1000);
+  const left = Math.max(0, (live.run.durations?.fault || 0) - secs);
+  document.title = phaseClock.name === "fault" ? `● FAULT LIVE ${left}s · AI Chaos Lab`
+    : phaseClock.name === "baseline" ? "Baseline… · AI Chaos Lab"
+    : ["restore", "recovered"].includes(phaseClock.name) ? "Restored · AI Chaos Lab" : "AI Chaos Lab";
   const planned = { baseline: live.run.durations?.baseline, fault: live.run.durations?.fault, recovered: live.run.durations?.recovery }[phaseClock.name];
   const n = live.records.length;
   const extra = phaseClock.name === "evidence" ? " (waiting for traces and metrics to flush, up to ~40 s)" : "";
-  $("#runline").innerHTML = `<b>${esc(PHASE_LABEL[phaseClock.name] || phaseClock.name)}</b> · ${secs}s${planned ? ` of ${planned}s` : ""} · ${n} requests observed${extra}${phaseClock.note ? ` · ${esc(phaseClock.note)}` : ""}`;
+  $("#runline").innerHTML = `${phaseClock.name === "fault" ? `<span class="live-banner">FAULT LIVE · ${left}s left</span>` : ""}<b>${esc(PHASE_LABEL[phaseClock.name] || phaseClock.name)}</b> · ${secs}s${planned ? ` of ${planned}s` : ""} · ${n} requests observed${extra}${phaseClock.note ? ` · ${esc(phaseClock.note)}` : ""}`;
 }, 1000);
 
+// Live events arrive ~15/s; redraw the heat-map at most twice a second to keep the browser light.
 let renderPending = false;
-function schedule() { if (!renderPending) { renderPending = true; requestAnimationFrame(() => { renderPending = false; renderLive(); }); } }
+/** Throttle live-panel redraws to at most one every 500 ms. */
+function schedule() { if (!renderPending) { renderPending = true; setTimeout(() => { renderPending = false; renderLive(); }, 500); } }
 
+/**
+ * Apply one streamed event (run, request, phase, guardrail, record, agent step, plan, campaign,
+ * analysis...) to the page state.
+ */
 function handle(ev) {
   const d = ev.data;
   switch (ev.kind) {
@@ -113,6 +182,10 @@ function handle(ev) {
     case "phase":
       live.timeline[d.name] = d.t;
       phaseClock = { name: d.name, at: Date.now(), note: d.description || (d.results || []).join("; ") || (d.ttr != null ? `recovered in ${d.ttr}s` : "") };
+      $("#end-fault").disabled = !["inject", "fault"].includes(d.name);
+      if (d.name === "fault" && $("#presenter").checked && shopWin && !shopWin.closed && shopView) {
+        shopWin.location.href = shopUrl() + shopView.path;   // fresh load: the fault is live now
+      }
       if (d.name === "inject") line(`Fault injected: ${d.description}`);
       else if (d.name === "restore") line(`Fault removed: ${(d.results || []).join("; ")}`);
       else if (d.name === "recovered") line(`All healthy paths recovered ${d.ttr}s after restore`);
@@ -141,17 +214,19 @@ function handle(ev) {
       if (findings) { findings.autofix = d; renderFindings(); }
       line(d.stage === "deployed" ? `Fix deployed to ${d.service}: ${d.message}` : `Deploying fix to ${d.file}…`); break;
     case "comparison": if (findings) { findings.comparison = d; renderFindings(); } loadStatus(); break;
-    case "done": phaseClock = null; setBusy(false); loadStatus(); renderStepper();
+    case "done": phaseClock = null; document.title = "AI Chaos Lab"; $("#end-fault").disabled = true; setBusy(false); loadStatus(); renderStepper();
       if (live.record) line(live.record.status === "completed" ? `Finished: ${live.record.title} on ${live.record.target}. Score ${live.record.resilience?.score ?? "–"}/100.` : `Stopped safely: ${live.record.abort_reason}`, live.record.status === "completed" ? "" : "warn");
       break;
   }
 }
 
+/** Show a one-line status message (red for warnings and errors). */
 function line(text, level) {
   $("#runline").innerHTML = `<span style="color:${level === "warn" || level === "error" ? "var(--bad)" : "inherit"}">${esc(text)}</span>`;
 }
 
 // ===================================================================== plan
+/** Render the AI planner's ranked experiments with Load and Run buttons. */
 function renderPlan() {
   if (!plan || !plan.experiments) return;
   const rows = plan.experiments.map((e, i) => `
@@ -169,6 +244,7 @@ function renderPlan() {
   setBusy(busy);
 }
 
+/** Load a planned experiment into the designer. */
 function loadProposal(e) {
   pickScenario(e.scenario, e.target, e.variant);
   $("#fault_s").value = e.fault_s;
@@ -176,6 +252,7 @@ function loadProposal(e) {
   location.hash = "#experiment";
 }
 
+/** Read the experiment parameters and guardrails from the designer form. */
 function designerParams() {
   return { scenario: $("#scenario").value, target: $("#target").value, variant: $("#variant").value,
     baseline_s: +$("#baseline_s").value, fault_s: +$("#fault_s").value, recovery_s: +$("#recovery_s").value,
@@ -183,6 +260,7 @@ function designerParams() {
       max_unrelated_p95_ms: +$("#g_p95").value, max_fault_s: +$("#g_cap").value } };
 }
 
+/** POST JSON to the lab server; shows the error and returns null on failure. */
 async function post(url, body) {
   const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
   const doc = await res.json();
@@ -190,14 +268,20 @@ async function post(url, body) {
   return doc;
 }
 
+/**
+ * Start a server job (experiment, campaign, analysis, auto-fix): lock the buttons, reset panels and
+ * listen for events.
+ */
 async function startJob(url, body, opts = {}) {
+  setBusy(true);                                  // disable at once: no double submits
   if (opts.reset !== false) { live = freshLive(); feed = []; renderFeed(); renderLive(); }
   connect();
   const ok = await post(url, body);
-  if (ok) { setBusy(true); status.job = ok.job; setBusy(true); }
+  if (ok) { status.job = ok.job; setBusy(true); } else { setBusy(false); }
 }
 
 // ===================================================================== live
+/** Render the pills describing the current experiment (category, target, variant, AI-proposed). */
 function renderMeta() {
   const r = live.record || live.run;
   if (!r) return;
@@ -207,8 +291,13 @@ function renderMeta() {
     live.record ? `<span class="pill ${live.record.status === "completed" ? "ok" : "bad"}">${esc(live.record.status)}</span>` : ""].join("");
 }
 
+/** Redraw the live panels: stepper, KPI tiles and request matrix. */
 function renderLive() { renderStepper(); renderKpis(); renderMatrix(); }
 
+/**
+ * Highlight the current lifecycle step (baseline, inject, fault, restore, recovered, evidence,
+ * agent).
+ */
 function renderStepper() {
   const tl = live.timeline, order = ["baseline", "inject", "fault", "restore", "recovered", "evidence", "agent"];
   let cur = null;
@@ -227,6 +316,7 @@ function renderStepper() {
   });
 }
 
+/** Mean per-path success rate and median latency for one phase. */
 function pathStats(phase) {
   const rows = live.records.filter((r) => r.phase === phase);
   if (!rows.length) return null;
@@ -236,6 +326,10 @@ function pathStats(phase) {
   return { n: rows.length, rate: Math.round(1000 * vals.reduce((a, b) => a + b, 0) / vals.length) / 10 };
 }
 
+/**
+ * Render the KPI tiles: success under fault, latency, impacted paths, recovery time and resilience
+ * score.
+ */
 function renderKpis() {
   const rec = live.record, res = rec?.resilience;
   const tile = (label, value, note, cls = "") => `<div class="kpi ${cls}"><div class="label">${label}</div><div class="value">${value}</div><div class="note">${note}</div></div>`;
@@ -252,6 +346,10 @@ function renderKpis() {
   ].join("");
 }
 
+/**
+ * Draw the request matrix: one row per user path, one dot per request over time, with phase
+ * markers.
+ */
 function renderMatrix() {
   const eps = Object.keys(status?.endpoints || {});
   const recs = live.records, tl = live.timeline;
@@ -292,8 +390,10 @@ function renderMatrix() {
 }
 
 // ================================================================ topology
+/** Fetch and draw the dependency graph, colouring the target and impacted services of the shown run. */
 async function renderTopology() {
-  const runId = live.record?.run_id || findings?.run?.run_id;
+  // While a run is live, show only its own blast radius (not the previous run's).
+  const runId = live.run ? live.record?.run_id : findings?.run?.run_id;
   graph = await (await fetch(`/api/topology${runId ? `?run=${runId}` : ""}`)).json();
   const blast = graph.blast;
   const state = (id) => {
@@ -335,6 +435,7 @@ async function renderTopology() {
   renderBlast(blast);
 }
 
+/** Render the blast-radius verdict and the expected, unexpected and healthy paths. */
 function renderBlast(blast) {
   if (!blast) { $("#blast").innerHTML = `<p class="muted">Arrow thickness = observed calls (Jaeger, last hour); dashed = static map only. Run an experiment to colour its blast radius.</p>`; return; }
   const label = (ep) => esc(status.endpoints[ep]?.label || ep);
@@ -348,6 +449,7 @@ function renderBlast(blast) {
 }
 
 // ================================================================ evidence
+/** Render the evidence tab: trace, metrics, logs or per-path baseline vs fault stats. */
 function renderEvidence() {
   const rec = live.record;
   document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === evTab));
@@ -379,6 +481,7 @@ function renderEvidence() {
 }
 
 // ==================================================================== feed
+/** Render the agent activity feed with model call count and time. */
 function renderFeed() {
   if (!feed.length) { $("#feed").innerHTML = `<p class="muted">Agent steps stream here.</p>`; return; }
   const calls = feed.filter((f) => f.kind === "llm_call");
@@ -404,10 +507,15 @@ function renderFeed() {
 }
 
 // ================================================================ findings
+/** Render a unified diff with added and removed lines coloured. */
 function diffHtml(diff) {
   return `<div class="diff">${diff.split("\n").map((l) => `<div class="${l.startsWith("+") && !l.startsWith("+++") ? "add" : l.startsWith("-") && !l.startsWith("---") ? "del" : l.startsWith("@@") ? "hunk" : ""}">${esc(l) || " "}</div>`).join("")}</div>`;
 }
 
+/**
+ * Render the AI analysis: summary, root cause, recommendations, proposed code fix with validation,
+ * and auto-fix controls.
+ */
 function renderFindings() {
   if (!findings) return;
   const a = findings.analysis, run = findings.run;
@@ -448,6 +556,7 @@ function renderFindings() {
   setBusy(busy);
 }
 
+/** Render the before/after comparison of an auto-fix re-run. */
 function compareHtml(c) {
   if (!c) return "";
   const b = c.before, a = c.after;
@@ -467,6 +576,7 @@ function compareHtml(c) {
 }
 
 // ================================================================ campaign
+/** Render campaign progress and, when finished, its overall report. */
 function renderCampaign() {
   if (!campaign) return;
   const exps = campaign.experiments || [];
@@ -485,6 +595,7 @@ function renderCampaign() {
   $("#campaign-out").innerHTML = html;
 }
 
+/** Render the table of recorded runs with score and Open/Analyse buttons. */
 function renderHistory() {
   const runs = status?.runs || [];
   $("#history").innerHTML = runs.length ? `<table><tr><th>When</th><th>Experiment</th><th>Target</th><th>Status</th><th>Score</th><th></th></tr>${runs.map((r) => `
@@ -497,12 +608,14 @@ function renderHistory() {
   setBusy(busy);
 }
 
+/** Load a saved campaign and render it. */
 async function loadCampaign(id) {
   const doc = await (await fetch(`/api/campaigns/${id}`)).json();
   campaign = { id, experiments: doc.experiments, index: doc.runs.length, report: doc.report };
   renderCampaign();
 }
 
+/** Load a recorded run into every panel. */
 async function openRun(id) {
   const doc = await (await fetch(`/api/runs/${id}`)).json();
   live = freshLive();
@@ -518,9 +631,15 @@ async function openRun(id) {
 
 // ================================================================= actions
 $("#scenario").addEventListener("change", (e) => pickScenario(e.target.value));
+$("#target").addEventListener("change", () => loadShopView());
+$("#variant").addEventListener("change", () => {});
+$("#presenter").addEventListener("change", () => { if ($("#presenter").checked) applyPresenterDefaults(); renderShopView(); });
+$("#end-fault").addEventListener("click", async () => { $("#end-fault").disabled = true; await post("/api/end-fault", {}); });
 $("#target").addEventListener("change", () => { if (!live.run) $("#hypothesis").textContent = status.scenarios[$("#scenario").value].hypothesis.replaceAll("{target}", $("#target").value); });
 $("#tabs").addEventListener("click", (e) => { if (e.target.dataset.tab) { evTab = e.target.dataset.tab; renderEvidence(); } });
-$("#run").addEventListener("click", () => startJob("/api/run", designerParams()));
+$("#run").addEventListener("click", () => {
+  startJob("/api/run", designerParams());
+});
 $("#plan-btn").addEventListener("click", () => { feed = []; renderFeed(); $("#plan-out").innerHTML = `<p class="muted">Planner agent is reading the dependency map…</p>`; startJob("/api/plan", {}, { reset: false }); });
 $("#campaign-btn").addEventListener("click", () => {
   const exps = plan.experiments.slice(0, 5).map((e) => ({ scenario: e.scenario, target: e.target, variant: e.variant, fault_s: Math.min(e.fault_s, 25), title: e.title }));

@@ -3,3 +3,6 @@ langchain-core>=1.0
 langchain-groq>=1.0
 langchain-google-genai>=4.0
 python-dotenv>=1.0
+# Demo video tooling (scripts/record_*.py, edit_*.py, demo_matrix.py); uses the installed Google Chrome
+playwright>=1.40
+imageio-ffmpeg>=0.5

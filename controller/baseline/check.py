@@ -12,6 +12,7 @@ CHECKOUT = "POST /api/checkout"
 
 
 def load(path: Path) -> Baseline:
+    """Load a saved baseline."""
     return Baseline.model_validate_json(path.read_text())
 
 
@@ -52,6 +53,9 @@ def usable_blockers(path: Path, daemon_id: str, flag_file: Path, max_age_hours: 
 
 
 def reproducibility_problems(a: Baseline, b: Baseline, rules: dict) -> list[str]:
+    """List why two baselines do not agree (unhealthy, different workload, daemon, flags or upstream
+    revision, or success and latency outside the allowed spread).
+    """
     problems = []
     for baseline in (a, b):
         if not baseline.healthy:

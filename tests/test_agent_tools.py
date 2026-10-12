@@ -19,6 +19,7 @@ from tests.test_agent_diagnosis import proposal
 
 @pytest.fixture
 def api(tmp_path):
+    """Fixture: a controller API over a temp flag file and store with gates passing."""
     flag = tmp_path / "flagd" / "demo.flagd.json"
     flag.parent.mkdir()
     shutil.copy(FLAG_FILE, flag)
@@ -31,6 +32,7 @@ def api(tmp_path):
 
 
 def agent_plan(registry, **params):
+    """Propose a payment-unreachable plan through the tool registry."""
     out = registry.dispatch("propose_plan", {"capability_id": "payment-unreachable", "parameters": params,
                                              "duration_seconds": 1, "expected_impact": "checkout fails"})
     assert out["ok"], out
@@ -38,6 +40,7 @@ def agent_plan(registry, **params):
 
 
 def wait_done(controller, run_id):
+    """Wait until a run reaches a terminal state."""
     deadline = time.monotonic() + 20
     while time.monotonic() < deadline:
         view = controller.run_summary(run_id)
@@ -49,6 +52,7 @@ def wait_done(controller, run_id):
 
 # --------------------------------------------------------------- registry
 def test_read_only_registry_allows_dry_runs_only():
+    """The default read-only registry allows dry runs but no live runs."""
     registry = ToolRegistry()
     plan = agent_plan(registry)
     dry = registry.dispatch("run_plan", {"plan": plan})
@@ -59,12 +63,16 @@ def test_read_only_registry_allows_dry_runs_only():
 
 
 def test_inspect_path_exposes_edges_not_source_text():
+    """inspect_path returns dependency edges, not source code."""
     out = ToolRegistry().dispatch("inspect_path", {})
     assert out["ok"] and any(e.startswith("checkout->payment") for e in out["result"]["edges"])
     assert "connectivity" in out["result"]["categories"] and "func (cs" not in json.dumps(out)
 
 
 def test_agent_runs_use_the_same_gates_store_and_request_ids(api):
+    """Runs started by the agent go through the same gates, store and request-id deduplication as
+    user runs.
+    """
     controller, flag, gates = api
     registry = ToolRegistry(controller=controller, allow_mutation=True)
     plan = agent_plan(registry)
@@ -88,6 +96,7 @@ def test_agent_runs_use_the_same_gates_store_and_request_ids(api):
 
 
 def test_agent_cannot_submit_user_attributed_plans(api):
+    """The agent cannot submit plans attributed to a user."""
     controller, *_ = api
     registry = ToolRegistry(controller=controller, allow_mutation=True)
     plan = agent_plan(registry) | {"requested_by": "user"}
@@ -97,6 +106,7 @@ def test_agent_cannot_submit_user_attributed_plans(api):
 
 # ---------------------------------------------------------------- session
 def test_session_relays_refusals_and_executes_nothing():
+    """When the model refuses, the session relays it and executes nothing."""
     plan = agent_plan(ToolRegistry())
     fake = FakeProvider([
         {"tool_calls": [{"id": "t1", "name": "run_plan", "input": {"plan": plan, "live": True}},
@@ -111,6 +121,7 @@ def test_session_relays_refusals_and_executes_nothing():
 
 
 def test_session_budgets_and_provider_errors_end_cleanly():
+    """Tool-call budgets and provider errors end the session cleanly."""
     looping = FakeProvider(responder=lambda req: {"tool_calls": [
         {"id": f"t{len(req.messages)}", "name": "list_capabilities", "input": {}}]})
     result = run_session("loop", looping, ToolRegistry(), Budget(max_model_calls=3))
@@ -122,6 +133,7 @@ def test_session_budgets_and_provider_errors_end_cleanly():
 
 # ------------------------------------------------------- API + diagnosis
 def test_diagnosis_endpoint_and_model_failure_isolation(api):
+    """The diagnosis endpoint works and a model failure does not affect the run."""
     controller, *_ = api
     controller.provider_factory = lambda: FakeProvider([{"json": proposal(cited_evidence=["ev-001"])}])
     server = serve(controller, port=0)

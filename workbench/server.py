@@ -14,6 +14,9 @@ FIXTURE = ROOT.parent / 'tests/fixtures/workbench/demo.json'
 
 
 def route(method, path, body=None, case="normal"):
+    """Answer an API request from the illustrative fixture, optionally simulating an error or failed
+    cleanup case.
+    """
     parsed = urlsplit(path)
     fixture = json.loads(FIXTURE.read_text())
     if case == 'api-error':
@@ -54,7 +57,9 @@ def route(method, path, body=None, case="normal"):
 
 
 class Handler(BaseHTTPRequestHandler):
+    """HTTP handler for the fixture-backed workbench preview."""
     def respond(self, status, data, mime='application/json'):
+        """Send a response with strict security headers."""
         self.send_response(status)
         self.send_header('Content-Type', mime)
         self.send_header('Cache-Control', 'no-store')
@@ -64,6 +69,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self):
+        """Serve allow-listed static assets or fixture API responses."""
         path = urlsplit(self.path).path
         if path.startswith('/api/'):
             status, result = route('GET', self.path, case=self.server.fixture_case)
@@ -77,6 +83,7 @@ class Handler(BaseHTTPRequestHandler):
         self.respond(200, (ROOT/name).read_bytes(), mime)
 
     def do_POST(self):
+        """Handle a fixture API POST after checking the Origin and body size."""
         origin = self.headers.get('Origin')
         expected = f'http://127.0.0.1:{self.server.server_port}'
         if origin and origin not in (expected, expected.replace('127.0.0.1','localhost')):

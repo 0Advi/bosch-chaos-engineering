@@ -1,57 +1,81 @@
-# Presenting the Payment Chaos Lab
+# AI Chaos Lab: presenter guide
 
-One live payment fault on the real 25-service Astronomy Shop, its measured
-evidence, and an AI SRE agent (LangGraph + a free Groq/Gemini model) that
-diagnoses it and recommends fixes. Dashboard: http://127.0.0.1:8099
+AI-driven chaos engineering on the OpenTelemetry Astronomy Shop (25 services, Docker Compose).
+An AI planner proposes experiments from the dependency map. A guarded engine injects real faults
+while synthetic customers use every shop path. LangGraph agents explain the outcome and propose a
+validated code fix. Dashboard: http://127.0.0.1:8099 · Shop: http://localhost:8081
 
-## One-time setup
+## Setup
 
 ```sh
-python3 -m venv .venv && . .venv/bin/activate      # or reuse the existing .venv
+python3 -m venv .venv && . .venv/bin/activate
 python -m pip install -r requirements-dev.txt -r demo/requirements.txt
-cp .env.example .env                                # then paste a free GROQ_API_KEY
+cp .env.example .env     # GEMINI_API_KEYS=key1,key2,...  GEMINI_MODEL=gemini-3.5-flash-lite
+make start               # 25-service sandbox (Docker Desktop must be running)
+python -m demo.server    # dashboard
 ```
 
-Free Groq key: https://console.groq.com/keys (no card). Gemini alternative:
-set `GEMINI_API_KEY` from https://aistudio.google.com/apikey instead.
+Before presenting:
+- Close heavy apps (browsers with many tabs, other AI desktop apps). On an 8 GB Mac, host
+  memory pressure stalls the whole shop and the health gate will (correctly) refuse to inject.
+- Check that every header chip is green.
+- Run one experiment as a rehearsal.
 
-## Before you go on stage (about 5 minutes)
+## Demo flow (about 3 minutes)
 
-1. Start Docker Desktop. Then `make start` (wait until it returns) and `make smoke`.
-2. `.venv/bin/python -m demo.server` (or `make demo PYTHON=.venv/bin/python`).
-3. Open http://127.0.0.1:8099. All five header chips must be green,
-   including `LLM: groq · …`.
-4. Do one rehearsal run. It also warms the shop's caches, so the first
-   baseline on stage has no cold-start outlier. Keep this run: it is your
-   fallback (footer → *Recorded runs* → Load).
+1. **Plan**: *Ask AI to plan experiments*. The planner reads the dependency map and past runs and
+   ranks experiments, each with a reason, hypothesis and expected blast radius. A safety validator
+   rejects anything outside the allowed targets.
+2. **Run** a proposal, or *Run top 5 as campaign*. Watch the live path matrix (10 customer paths)
+   and the dependency graph light up with the blast radius.
+3. **Evidence**: Jaeger error chains, Prometheus error spans, logs, container state.
+4. **AI analysis**: ranked weaknesses, recommendations, and a code fix that is syntax-checked and
+   refused if it merely deletes the injected fault.
+5. **Report**: resilience score per experiment and overall, plus a Markdown findings report.
 
-## Talk track (about 3 minutes live)
+Pre-recorded alternative: `python scripts/record_demo.py --top 5`, then `python scripts/edit_demo.py`
+(≤3-min video) and `python scripts/demo_matrix.py` (results matrix PNG/CSV/MD) in `artifacts/demo-video/`.
 
-| Step | Show | Say |
+## Fault catalog: how each fault is really injected
+
+| Scenario | Mechanism | Where the failure happens |
 |---|---|---|
-| 1 Design | Scenario *Payment service rejects charges*, 50% | "We flip one real feature flag in flagd: the payment service will fail half of its charge calls. Guardrails: 60-second cap, auto-restore, and auto-abort if anything beyond checkout breaks." |
-| 2 Hypothesis | Hypothesis panel | "Our expectation: only checkout is affected, customers get a clear retryable error, and we recover within seconds." |
-| 3 Run | Click **Run experiment**; watch the dots | "Green dots are real orders from synthetic customers. When the red band starts, the fault is live, and roughly half the orders fail. Home, catalog and cart stay green, so the blast radius is contained." |
-| 4 Restore | KPI tiles | "The flag is restored automatically. Time to impact is about 1 second; recovery is under 1 second." |
-| 5 Evidence | Trace tab, then Metrics and Logs | "This is the distributed trace of one failed order: payment throws, checkout wraps it, and the frontend returns HTTP 422 PAYMENT_FAILED. Prometheus and the logs show the same count independently." |
-| 6 Agent | Agent feed | "Now a LangGraph agent on a free Llama 3.3 70B plans an investigation and calls read-only tools: summary, trace, metrics, logs and source code." |
-| 7 Recommendations | Report | "It finds the real problem: a payment-service fault is shown to customers as *check your card details*. That makes a backend outage look like a card decline, so it never pages anyone. Each fix says how re-running this experiment verifies it. The reviewer checks that every claim cites evidence the agent actually retrieved." |
+| Payment rejects charges | flag `paymentFailure` | payment `charge.js` throws |
+| Checkout cannot reach payment | flag `paymentUnreachable` | checkout dials a bad address |
+| Cart fails | flag `cartFailure` | cart `EmptyCart`, which checkout calls **after charging** (add/view cart are unaffected) |
+| Product catalog fails for one product | flag with targeting | product-catalog, product `OLJCESPC7Z` only |
+| DB lock contention | flag | product-catalog holds an exclusive table lock for a fixed 30 s |
+| Recommendation cache failure, ad failure / CPU / GC, intl shipping slowdown, email memory leak | flags | inside each service; intl slowdown only for non-US addresses |
+| Slow product images | flag **plus** server-side stalls of image-provider | upstream's flag only slows home-page cards (browser sends a delay header); the stalls make images slow on every page |
+| Slow responses | repeated short freezes (pause/unpause) | any allowed service |
+| Crash, hang, network partition, CPU starvation | `docker kill` / `pause` / `network disconnect` / CPU quota | any allowed service |
+| DB overload | CPU-only SQL loop in PostgreSQL (cannot fill disk) | astronomy-db |
+| Traffic spike, spike + crash | concurrent synthetic users (+ `docker kill`) | frontend / chosen service |
 
-## If something goes wrong
+Never targeted: frontend-proxy, the telemetry stack and flagd (they would blind or disable the
+experiment).
 
-- **Fault still active** (header chip red): click **Abort & restore**. The fault
-  is also restored when the server exits or restarts.
-- **LLM rate-limited or offline**: load the rehearsal run from the footer. It
-  includes the saved analysis and is clearly labelled *Recorded run*.
-  *Re-run agent* re-analyses any saved run without touching the shop.
-- **Shop unhealthy**: `make status`, then `make start` again.
+## Safety
 
-## What is real and what is not
+- Health gate: no injection unless every path has a steady baseline (waits up to 30 s).
+- Guardrails, all configurable: shop down, blast radius spreading to paths that don't depend on
+  the target, error rate, median latency on unrelated paths, 60 s hard cap. A breach must persist
+  for two checks.
+- Every fault is journaled before it is applied and restored on finish, abort, crash, exit or the
+  next server start. Flag restores are verified against what flagd actually serves.
+- Kill switch (Shift+K) restores everything at once.
 
-Real: the flag change, the synthetic orders and their HTTP results, the Jaeger
-traces, the Prometheus span metrics, the container logs, and the restoration.
-The agent's text is model-generated. Its evidence items are checked against the
-tools it actually called, and its quoted percentages are checked against the
-measured rates. The recommended code changes have not been applied or replayed
-in this demo. `patches/checkout-preserve-rpc-code.candidate.patch` is the
-starting point for that.
+## Resilience score (deterministic; the AI explains it, never sets it)
+
+Availability 30% · containment 25% · recovery time 20% · error-handling quality 15% · latency 10%.
+Grades A ≥ 90, B ≥ 75, C ≥ 60, D ≥ 40. Campaign score = mean of experiments. See `demo/scoring.py`.
+
+## Known limitations (say them before a judge does)
+
+- One run per experiment (~15–25 s fault window). Scores compare experiments; repeat runs to
+  tighten them.
+- Laptop load adds noise. Latency uses medians and the health gate refuses unhealthy baselines.
+- Auto-fix deploys live only to interpreted services (payment, recommendation, email). Compiled
+  services get a saved patch for an image rebuild.
+- In the shop UI a failed checkout shows no message (the order call's error is never displayed).
+  That is an upstream application weakness the experiments surface, not a lab bug.

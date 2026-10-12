@@ -13,15 +13,20 @@ MAX_FILES = 20
 
 
 def sha256(data: bytes) -> str:
+    """SHA-256 hex digest of bytes."""
     return hashlib.sha256(data).hexdigest()
 
 
 def git(root: Path, *args: str) -> str:
+    """Run a git command in a repository and return its output."""
     return subprocess.run(['git', '-C', str(root), *args], check=True,
                           capture_output=True, text=True, timeout=60).stdout.strip()
 
 
 def inspect_diff(data: bytes) -> list[str]:
+    """Check a diff is plain same-path text edits within size limits and return the files it
+    touches.
+    """
     if not data or len(data) > MAX_DIFF_BYTES or b'\0' in data:
         raise ValueError('patch must be nonempty UTF-8 text within 512000 bytes')
     text = data.decode('utf-8')
@@ -52,6 +57,9 @@ def inspect_diff(data: bytes) -> list[str]:
 
 def prepare(source: Path, workspace: Path, data: bytes, patch_id: str,
             base_revision: str, rationale: str) -> Patch:
+    """Validate a diff and apply it in a fresh isolated worktree at the base revision, returning the
+    Patch record.
+    """
     files = inspect_diff(data)
     patch = Patch(patch_id=patch_id, base_revision=base_revision,
                   diff_sha256=sha256(data), affected_files=files, rationale=rationale)

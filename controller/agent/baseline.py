@@ -14,12 +14,19 @@ CARD_TERMS = ("credit card info is invalid", "cannot process", "expired on", "on
 
 def _proposal(category, cited, service="", edge="", uncertainty="medium", next_action="", requested=(),
               alternatives=()):
+    """Build one diagnosis proposal dict (category, service, edge, cited evidence, uncertainty, next
+    action) in the shape the grounding step expects.
+    """
     return {"category": category, "service": service, "edge": edge, "affected_paths": ["POST /api/checkout"],
             "cited_evidence": list(cited), "alternatives": list(alternatives), "uncertainty": uncertainty,
             "next_action": next_action, "requested_observations": list(requested), "suggestions": []}
 
 
 def _propose(bundle: EvidenceBundle) -> dict:
+    """Apply the payment-semantics rules to the evidence bundle in priority order (duplicate charge,
+    wrong amount, connectivity, handler failure, card decline, healthy, missing telemetry) and
+    return the first matching proposal.
+    """
     attempts = [i for i in bundle.items if i["kind"] == "checkout_attempt"]
     fault = [i for i in attempts if i["data"].get("phase") == "fault"] or attempts
     failed = [i for i in fault if i["data"].get("matched") is False]
@@ -77,4 +84,7 @@ def _propose(bundle: EvidenceBundle) -> dict:
 
 
 def diagnose_with_rules(run_id: str, bundle: EvidenceBundle) -> DiagnosisResult:
+    """Diagnose a run with the free rule baseline, then ground the proposal against the bundle like
+    a model diagnosis.
+    """
     return ground(run_id, _propose(bundle), bundle, "baseline")

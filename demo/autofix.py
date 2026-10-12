@@ -14,7 +14,7 @@ import subprocess
 import sys
 
 from . import faults
-from .agent import validate_fix
+from .fixcheck import validate_fix
 from .catalog import HOT_PATCH
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,6 +26,9 @@ RUNS_DIR = ROOT / "artifacts" / "demo-runs"
 
 
 def _compose() -> list[str]:
+    """Return the base docker compose command from scripts/demo.py (pinned-revision checks
+    included), plus the auto-fix overlay if one exists.
+    """
     sys.path.insert(0, str(ROOT / "scripts"))
     import demo as demo_script  # scripts/demo.py: pinned-revision checks + base compose command
     command = demo_script.compose()
@@ -35,6 +38,7 @@ def _compose() -> list[str]:
 
 
 def active() -> dict:
+    """Return the fixes currently deployed (file -> service, run, title, time), or {} if none."""
     try:
         return json.loads(STATE.read_text())
     except (OSError, ValueError):
@@ -42,6 +46,9 @@ def active() -> dict:
 
 
 def _write_state(state: dict):
+    """Persist the deployed-fix state and regenerate the Compose overlay that bind-mounts each
+    patched file over the image's copy; remove both when no fix is active.
+    """
     AUTOFIX_DIR.mkdir(parents=True, exist_ok=True)
     services: dict[str, dict] = {}
     for entry in state.values():
@@ -56,6 +63,9 @@ def _write_state(state: dict):
 
 
 def _recreate(service: str) -> str:
+    """Recreate one service with docker compose (no dependencies) and wait until it is healthy;
+    returns compose's last status line.
+    """
     result = subprocess.run(_compose() + ["up", "-d", "--no-deps", "--force-recreate", "--wait",
                                           "--wait-timeout", "120", service],
                             capture_output=True, text=True, timeout=180)
@@ -65,6 +75,9 @@ def _recreate(service: str) -> str:
 
 
 def save_patch(run_id: str, fix: dict) -> Path | None:
+    """Save the fix's unified diff as artifacts/demo-runs/<run_id>.fix.patch; returns the path, or
+    None without a diff.
+    """
     diff = (fix.get("validation") or {}).get("diff")
     if not diff:
         return None
@@ -74,6 +87,10 @@ def save_patch(run_id: str, fix: dict) -> Path | None:
 
 
 def apply(run_id: str, fix: dict) -> dict:
+    """Deploy a run's AI fix: refuse while a fault is active, re-validate it, save compiled-service
+    fixes as a patch only, otherwise hot-patch the interpreted service, recreate and health-check
+    it, rolling back on any failure.
+    """
     if faults.active_faults():
         raise RuntimeError("a fault is still active; restore it before deploying a fix")
     result = validate_fix(fix)  # re-validate against the pinned source right before deploying
@@ -106,6 +123,9 @@ def apply(run_id: str, fix: dict) -> dict:
 
 
 def rollback(service: str) -> dict:
+    """Remove a service's deployed fix (overlay entry and patched files) and recreate the service
+    from its original image.
+    """
     state = {k: v for k, v in active().items() if v["service"] != service}
     _write_state(state)
     for rel in [r for r in HOT_PATCH if r.startswith(service + "/")]:
@@ -115,7 +135,11 @@ def rollback(service: str) -> dict:
 
 
 def compare(before: dict, after: dict) -> dict:
+    """Build the before/after comparison of two runs of the same experiment (score, availability,
+    error handling, misleading 4xx, timeouts, recovery, failure status mix).
+    """
     def pick(run):
+        """Extract the comparable metrics from one run record."""
         r = run.get("resilience") or {}
         facts = r.get("facts") or {}
         return {"score": r.get("score"), "grade": r.get("grade"), "parts": r.get("parts"),
@@ -130,6 +154,7 @@ def compare(before: dict, after: dict) -> dict:
 
 
 def _status_mix(run: dict) -> dict:
+    """Count fault-phase failures by HTTP status (or 'timeout')."""
     mix: dict[str, int] = {}
     for r in run.get("requests") or []:
         if r["phase"] == "fault" and not r["ok"]:

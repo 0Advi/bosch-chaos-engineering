@@ -6,11 +6,15 @@ from ..schemas.contracts import PhaseSummary
 
 
 def _row(name: str, p: PhaseSummary) -> str:
+    """One markdown table row for a phase summary."""
     p95 = f"{p.p95_latency_ms:.0f}" if p.p95_latency_ms is not None else "–"
     return f"| {name} | {p.attempts} | {p.successes} | {p.missing_samples} | {p95} |"
 
 
 def to_markdown(r: RunReport) -> str:
+    """Render a run report as markdown: outcome, cleanup, conclusiveness, phase table, timeline,
+    missing evidence and limitations.
+    """
     c = r.comparison
     lines = [
         f"# Run report: {r.run_id}",

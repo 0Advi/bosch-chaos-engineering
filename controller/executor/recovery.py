@@ -33,11 +33,15 @@ def wait_for_flag(env: Environment, flag: str, expected, timeout: float, poll: f
 
 def journal(limits: RunLimits, services_before: Optional[dict] = None,
             change: Optional[FlagChange] = None) -> dict:
+    """The recovery journal stored before any mutation: limits, service states before the run and
+    the exact flag change.
+    """
     return {"limits": asdict(limits), "services_before": services_before,
             "change": change.as_journal() if change else None}
 
 
 def _limits(run: dict) -> RunLimits:
+    """The run's limits from its recovery journal."""
     return RunLimits(**run["recovery"]["limits"])
 
 
@@ -82,6 +86,9 @@ def verify_recovery(store: RunStore, env: Environment, run_id: str) -> list[str]
 
 
 def _final(reason: R) -> S:
+    """The terminal state for a stop reason: RECOVERED for a completed run, FAILED for an adapter
+    error, otherwise ABORTED.
+    """
     return {R.COMPLETED: S.RECOVERED, R.ADAPTER_ERROR: S.FAILED}.get(reason, S.ABORTED)
 
 
@@ -98,6 +105,9 @@ def drive_recovery(store: RunStore, env: Environment, run_id: str, reason: Optio
 
 
 def _drive(store: RunStore, env: Environment, run_id: str, reason: Optional[R], who: str) -> S:
+    """Move a run from any non-terminal state to a terminal one: restore the flag, verify recovery,
+    or mark NEEDS_ATTENTION if cleanup cannot be confirmed.
+    """
     run = store.get(run_id)
     if S(run["state"]) in TERMINAL:
         return S(run["state"])

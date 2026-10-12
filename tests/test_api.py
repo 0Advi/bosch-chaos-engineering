@@ -18,10 +18,13 @@ from tests.fake_env import FakeEnvironment, fast_limits, make_plan
 
 
 class Client:
+    """Small HTTP client for the controller API under test."""
     def __init__(self, port):
+        """Target the API on a loopback port."""
         self.port, self.base = port, f"http://127.0.0.1:{port}"
 
     def call(self, method, path, body=None, headers=None):
+        """Make a JSON request and return (status, parsed body)."""
         data = json.dumps(body).encode() if body is not None else (b"{}" if method == "POST" else None)
         hdrs = {"Content-Type": "application/json"} if method == "POST" else {}
         hdrs.update(headers or {})
@@ -33,6 +36,7 @@ class Client:
         return status, (json.loads(raw) if "json" in ctype else raw.decode())
 
     def raw(self, method, path, body=b"", headers=None):
+        """Make a raw request with full control over headers (for Host/Origin checks)."""
         conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=20)
         conn.putrequest(method, path, skip_host=True)
         for k, v in {"Host": f"127.0.0.1:{self.port}", "Content-Length": str(len(body)), **(headers or {})}.items():
@@ -70,6 +74,7 @@ class Client:
 
 @pytest.fixture
 def setup(tmp_path):
+    """Fixture: start the controller API on a free port with a fake environment and temp files."""
     flag = tmp_path / "flagd" / "demo.flagd.json"
     flag.parent.mkdir()
     shutil.copy(FLAG_FILE, flag)
@@ -87,10 +92,12 @@ def setup(tmp_path):
 
 
 def plan_body(duration=1, **kw):
+    """A valid plan as JSON."""
     return make_plan(duration=duration, **kw).model_dump(mode="json")
 
 
 def wait_terminal(client, run_id, timeout=20):
+    """Poll a run until it reaches a terminal state."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         _, run = client.call("GET", f"/api/v1/runs/{run_id}")
@@ -101,6 +108,7 @@ def wait_terminal(client, run_id, timeout=20):
 
 
 def wait_running(client, run_id):
+    """Poll a run until it is RUNNING."""
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline:
         _, events = client.call("GET", f"/api/v1/runs/{run_id}/events")
@@ -112,6 +120,7 @@ def wait_running(client, run_id):
 
 # ------------------------------------------------------------------ P3-02
 def test_read_endpoints(setup):
+    """Health, catalog, policy and run-list endpoints answer."""
     client, *_ = setup
     status, health = client.call("GET", "/api/v1/health")
     assert status == 200 and health["active_runs"] == [] and health["policy_version"]
@@ -125,6 +134,7 @@ def test_read_endpoints(setup):
 
 
 def test_plan_proposal_validation_and_dry_run(setup):
+    """Plans can be proposed, validated and dry-run through the API."""
     client, *_ = setup
     status, out = client.call("POST", "/api/v1/plans", {
         "capability_id": "payment-handler-failure", "parameters": {"failure_rate": "100%"},
@@ -144,6 +154,7 @@ def test_plan_proposal_validation_and_dry_run(setup):
 
 
 def test_live_run_lifecycle_report_and_evidence(setup):
+    """A live run goes through its lifecycle, restores the flag and exposes its report and evidence."""
     client, _, flag, _ = setup
     status, run = client.call("POST", "/api/v1/runs", {"plan": plan_body(), "live": True})
     assert status == 202 and run["state"] in ("DRAFT", "BASELINING", "READY", "ARMED", "RUNNING")
@@ -163,6 +174,7 @@ def test_live_run_lifecycle_report_and_evidence(setup):
 
 
 def test_duplicate_and_concurrent_requests_cannot_double_mutate(setup):
+    """Duplicate or concurrent run requests never apply a fault twice."""
     client, *_ = setup
     body = {"plan": plan_body(duration=20), "live": True}
     status, first = client.call("POST", "/api/v1/runs", body)
@@ -181,6 +193,7 @@ def test_duplicate_and_concurrent_requests_cannot_double_mutate(setup):
 
 
 def test_gates_block_without_creating_a_run(setup):
+    """A failing gate blocks a live run without creating a run record."""
     client, api, flag, options = setup
     options["gate_blockers"] = ["baseline: baseline is stale"]
     status, out = client.call("POST", "/api/v1/runs", {"plan": plan_body(), "live": True})
@@ -189,6 +202,7 @@ def test_gates_block_without_creating_a_run(setup):
 
 
 def test_unknown_run_and_evidence_paths_are_contained(setup):
+    """Unknown runs give 404 and evidence paths cannot escape the results directory."""
     client, *_ = setup
     assert client.call("GET", "/api/v1/runs/run-nope")[0] == 404
     status, run = client.call("POST", "/api/v1/runs", {"plan": plan_body(), "live": True})
@@ -199,6 +213,7 @@ def test_unknown_run_and_evidence_paths_are_contained(setup):
 
 # ----------------------------------------------------------- access rules
 def test_access_controls(setup):
+    """Wrong Host or Origin headers and oversized bodies are rejected."""
     client, api, *_ = setup
     assert client.raw("GET", "/api/v1/health", headers={"Host": "evil.example:80"})[0] == 403
     status, body, _ = client.raw("POST", "/api/v1/runs", json.dumps({"plan": plan_body(), "live": True}).encode(),
@@ -218,6 +233,7 @@ def test_access_controls(setup):
 
 # ------------------------------------------------------------------ P3-03
 def test_stream_delivers_ordered_events_and_resumes(setup):
+    """The event stream delivers events in order and can resume after a sequence number."""
     client, *_ = setup
     status, run = client.call("POST", "/api/v1/runs", {"plan": plan_body(), "live": True})
     events, end = client.stream(run["run_id"])
@@ -231,6 +247,7 @@ def test_stream_delivers_ordered_events_and_resumes(setup):
 
 
 def test_disconnecting_the_stream_does_not_cancel_the_run(setup):
+    """Closing the event stream does not cancel the run."""
     client, _, flag, _ = setup
     status, run = client.call("POST", "/api/v1/runs", {"plan": plan_body(duration=2), "live": True})
     partial, end = client.stream(run["run_id"], stop_after=3)
@@ -245,10 +262,12 @@ def test_disconnecting_the_stream_does_not_cancel_the_run(setup):
 
 # ------------------------------------------------------- baseline capture
 def test_baseline_capture_job(setup, tmp_path):
+    """Baseline capture runs as a single background job with visible status."""
     client, api, *_ = setup
     gate = threading.Event()
 
     def fake_capture():
+        """A fake baseline capture that waits for the test's signal."""
         gate.wait(5)
         now = datetime.now(timezone.utc)
         stats = [ProbeStats(probe=p, attempts=1, failures=0, failure_rate=0, p95_ms=1.0)

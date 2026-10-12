@@ -29,15 +29,18 @@ def canonical_event(event: Event) -> str:
 
 
 def events_digest(events: list[Event]) -> str:
+    """SHA-256 over the canonical form of all events, so the evidence can be checked for tampering."""
     return hashlib.sha256("\n".join(canonical_event(e) for e in events).encode()).hexdigest()
 
 
 def _checkout(events: list[Event], phase: str) -> list[Event]:
+    """The checkout-probe observations of one phase."""
     return [e for e in events if e.type == "observation" and e.data.get("phase") == phase
             and e.data.get("probe") == CHECKOUT]
 
 
 def _phase(samples: list[Event], expected: int) -> PhaseSummary:
+    """Summarize one phase's samples: attempts, matched successes, missing samples and p95 latency."""
     latencies = [e.data["latency_ms"] for e in samples if e.data.get("latency_ms") is not None]
     return PhaseSummary(attempts=len(samples), successes=sum(1 for e in samples if e.data.get("matched")),
                         missing_samples=max(0, expected - len(samples)),
@@ -45,6 +48,7 @@ def _phase(samples: list[Event], expected: int) -> PhaseSummary:
 
 
 def _fixture_phase(events: list[Event]) -> PhaseSummary:
+    """Summarize fixture results of the fault phase (HTTP 200 or exit code 0 counts as success)."""
     items = [e for e in events if e.type == "observation" and e.data.get("phase") == "fault"
              and e.data.get("probe") is None and e.data.get("kind") is None]
     ok = sum(1 for e in items if e.data.get("http_status") == 200 or e.data.get("exit_code") == 0)
@@ -52,6 +56,9 @@ def _fixture_phase(events: list[Event]) -> PhaseSummary:
 
 
 def _cleanup_status(state: S, states_seen: set[S], recovered: bool) -> str:
+    """Whether cleanup was verified, not required, pending, not started or needs attention, from the
+    final state and the states seen.
+    """
     if state == S.NEEDS_ATTENTION:
         return "needs_attention"
     mutated = S.ARMED in states_seen
@@ -63,6 +70,9 @@ def _cleanup_status(state: S, states_seen: set[S], recovered: bool) -> str:
 
 
 def _baseline_reference(ref: Optional[str], root: Path, missing: list[str]) -> Optional[dict]:
+    """Load and verify the baseline the plan refers to (inside artifacts/, present, hash matching);
+    records anything missing.
+    """
     if not ref:
         missing.append("plan has no baseline_ref")
         return None
@@ -82,10 +92,14 @@ def _baseline_reference(ref: Optional[str], root: Path, missing: list[str]) -> O
 
 
 def _rate(summary: PhaseSummary) -> str:
+    """A phase's success rate as 'successes/attempts' (or 'no samples')."""
     return f"{summary.successes}/{summary.attempts}" if summary.attempts else "no samples"
 
 
 def build_report(run: dict, events: list[Event], root: Path = ROOT) -> RunReport:
+    """Build the run report from the run record and its events: timeline, phase comparison, cleanup
+    status, conclusiveness, evidence digest and limitations.
+    """
     events = sorted(events, key=lambda e: e.seq)
     run_id, plan = run["run_id"], run["plan"] or {}
     state = S(run["state"])

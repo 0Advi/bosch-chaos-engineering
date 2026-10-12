@@ -15,6 +15,9 @@ from .providers import ModelProvider
 
 def diagnose_run(store: RunStore, run_id: str, results_dir: Path, diagnoser: str = "model",
                  provider: Optional[ModelProvider] = None, telemetry=None) -> DiagnosisResult:
+    """Diagnose a finished run with the rule baseline or a model, save diagnosis.json next to its
+    evidence and refresh the evidence manifest.
+    """
     record, events = store.get(run_id), store.events(run_id)
     bundle = from_run(record, events, telemetry)
     if diagnoser == "baseline":

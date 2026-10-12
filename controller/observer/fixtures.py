@@ -20,6 +20,9 @@ CURRENCY = "USD"
 
 @dataclass(frozen=True)
 class Fixture:
+    """One synthetic checkout fixture: card data and the expected status, error code, cart outcome
+    and order.
+    """
     name: str
     card: dict
     expect_status: int
@@ -50,6 +53,7 @@ SECRETS = sorted({f.card["creditCardNumber"] for f in FIXTURES.values()}
 
 
 def _step(name: str, result: dict) -> dict:
+    """The recorded fields of one step of an attempt."""
     return {"name": name, "http_status": result["http_status"], "latency_ms": result["latency_ms"],
             "trace_id": result["trace_id"], "transport_error": result["transport_error"]}
 

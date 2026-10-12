@@ -250,3 +250,16 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; font-family: var
 .gauge .big { font: 350 64px/1 var(--mono); letter-spacing: -.06em; font-variant-numeric: tabular-nums; }
 .notice { padding: 9px 12px; border: 1px solid var(--line); background: var(--soft); font-size: 13px; margin-bottom: 10px; }
 footer.foot { max-width: 1340px; margin: 0 auto 30px; padding: 0 24px; font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+/* ---- shop view / presenter mode ---- */
+.presenter { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: var(--muted); margin: 2px 0 12px; cursor: pointer; }
+.presenter input { margin-top: 3px; accent-color: #c6f4b2; }
+.presenter b { color: var(--ink); font-weight: 600; }
+.shopview { border: 1px solid var(--line); background: var(--soft); padding: 14px 16px; margin: 0 0 16px; }
+.shopview .sv-head { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 8px; }
+.shopview .sv-title { font: 500 11px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.shopview ol { margin: 6px 0 8px; padding-left: 20px; font-size: 13.5px; }
+.shopview .sv-expect { font-size: 14px; }
+.vis { font: 600 11px var(--mono); text-transform: uppercase; padding: 2px 8px; border-radius: 4px; border: 1px solid currentColor; }
+.vis.high { color: var(--ok); } .vis.medium { color: var(--yellow); } .vis.low { color: var(--warn); } .vis.none { color: var(--bad); }
+.live-banner { display: inline-block; background: var(--bad); color: #fff; font: 600 12px var(--mono); padding: 3px 9px; border-radius: 4px; margin-right: 8px; animation: blink 1s infinite; }

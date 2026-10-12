@@ -27,12 +27,16 @@ class Shop:
     """Bounded client; refuses anything except the loopback sandbox proxy."""
 
     def __init__(self, app_url: str, timeout: float):
+        """Create a client for the loopback shop only (anything else is refused)."""
         if not app_url.startswith(LOOPBACK):
             raise PermissionError("synthetic requests only target the loopback sandbox proxy")
         self.app_url, self.timeout = app_url.rstrip("/"), timeout
 
     def call(self, path: str, body: dict | None = None, method: str | None = None,
              timeout: float | None = None) -> dict:
+        """Make one request with synthetic baggage and a fresh traceparent; returns status, latency,
+        trace id, transport error and parsed body.
+        """
         trace_id = secrets.token_hex(16)
         headers = {"Content-Type": "application/json", "baggage": "synthetic_request=true",
                    "traceparent": f"00-{trace_id}-{secrets.token_hex(8)}-01"}
@@ -61,15 +65,18 @@ class Shop:
 
     # ------------------------------------------------------------- shop API
     def add_to_cart(self, user: str, product_id: str, quantity: int) -> dict:
+        """Add an item to a user's cart."""
         return self.call("/api/cart", {"userId": user, "item": {"productId": product_id, "quantity": quantity}})
 
     def read_cart(self, user: str) -> dict:
+        """Read a user's cart and report how many items it holds."""
         result = self.call("/api/cart?" + urlencode({"sessionId": user, "currencyCode": "USD"}))
         body = result.pop("body")
         result["items"] = len(body.get("items", [])) if result["http_status"] == 200 and body else None
         return result
 
     def new_cart(self, product_id: str, quantity: int) -> str:
+        """Create a fresh synthetic user with one item in the cart."""
         user = "chaos-" + str(uuid4())
         added = self.add_to_cart(user, product_id, quantity)
         if added["http_status"] != 200:
@@ -77,9 +84,11 @@ class Shop:
         return user
 
     def cart_items(self, user: str) -> int | None:
+        """Number of items in a user's cart (None if it could not be read)."""
         return self.read_cart(user)["items"]
 
     def checkout(self, user: str, currency: str, card: dict | None = None) -> dict:
+        """Place an order with the test address and card; keeps only non-sensitive response fields."""
         order = {"userId": user, "email": SYNTHETIC_EMAIL, "userCurrency": currency,
                  "address": ADDRESS, "creditCard": card or FAKE_CARD}
         result = self.call("/api/checkout?currencyCode=USD", order)

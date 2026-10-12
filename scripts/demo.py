@@ -24,6 +24,9 @@ EXPECTED = {
 
 
 def compose(source_build=False):
+    """The docker compose command for the sandbox (checks the pinned upstream revision; optionally
+    adds the source-build file).
+    """
     if not (UPSTREAM / "compose.yaml").is_file():
         raise RuntimeError("Upstream source is missing. Run make bootstrap.")
     actual = subprocess.check_output(
@@ -50,6 +53,9 @@ def compose(source_build=False):
 
 
 def validate(source_build=False):
+    """Check the resolved compose config: expected services, loopback-only ports, sandbox project
+    name and mounts.
+    """
     resolved = json.loads(subprocess.check_output(
         compose(source_build) + ["config", "--format", "json"], text=True
     ))
@@ -83,6 +89,7 @@ def validate(source_build=False):
 
 
 def host_port(key, default):
+    """A published host port from the environment or deploy/demo*.env files, else the default."""
     if key in os.environ:
         value = os.environ[key]
     else:
@@ -99,6 +106,9 @@ def host_port(key, default):
 
 
 def smoke():
+    """Smoke-test the running shop and Prometheus: home page, products, recommendations and
+    readiness.
+    """
     app = f"http://127.0.0.1:{host_port('BOSCH_APP_PORT', 8080)}"
     metrics = f"http://127.0.0.1:{host_port('BOSCH_METRICS_PORT', 9090)}"
     for url in [app + "/", app + "/api/products",
@@ -115,6 +125,7 @@ def smoke():
 
 
 def main():
+    """Command line: validate, build, start, stop, status or smoke-test the sandbox."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=["validate", "build", "start", "stop", "status", "smoke"])
     action = parser.parse_args().action

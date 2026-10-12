@@ -39,23 +39,31 @@ STATE_JS = """() => ({
 
 
 class Log:
+    """Timestamped event log for the recordings, used later to cut the video."""
     def __init__(self):
+        """Start with no events and no recordings."""
         self.events, self.starts = [], {}
 
     def start(self, video: str):
+        """Mark when a video recording started."""
         self.starts[video] = time.monotonic()
 
     def add(self, video: str, kind: str, **data):
+        """Log an event at the current time in a video and print it."""
         t = round(time.monotonic() - self.starts[video], 2)
         self.events.append({"video": video, "t": t, "kind": kind, **data})
         print(f"[{video} {t:7.1f}s] {kind} {json.dumps(data)[:160]}", flush=True)
 
 
 async def scroll_to(page, selector: str, block: str = "start"):
+    """Smoothly scroll an element into view."""
     await page.evaluate(f"document.querySelector('{selector}')?.scrollIntoView({{behavior:'smooth', block:'{block}'}})")
 
 
 async def director(page, log: Log, top: int, stop: asyncio.Event, ctx: dict):
+    """Drive the dashboard: plan with the AI, run the top experiments as a campaign and show the
+    results.
+    """
     await page.goto(LAB)
     await page.wait_for_function("() => typeof status !== 'undefined' && status && status.health", timeout=60000)
     log.add("dashboard", "hero")
@@ -133,6 +141,9 @@ async def director(page, log: Log, top: int, stop: asyncio.Event, ctx: dict):
 
 
 async def shopper(page, log: Log, stop: asyncio.Event, ctx: dict):
+    """Keep using the shop (browse, add to cart, check out) during the recording and log what
+    happens.
+    """
     i = 0
     while not stop.is_set():
         scenario = (ctx.get("state") or {}).get("scenario")
@@ -176,6 +187,7 @@ async def shopper(page, log: Log, stop: asyncio.Event, ctx: dict):
 
 
 async def main():
+    """Record the dashboard and shop side by side while running the top planned experiments."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--top", type=int, default=5)
     parser.add_argument("--out", default="artifacts/demo-video")

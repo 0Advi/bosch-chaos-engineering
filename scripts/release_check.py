@@ -14,6 +14,9 @@ from controller.executor.flag_store import baseline_problems, FLAG_FILE
 
 
 def main():
+    """Check release readiness: pinned upstream revision, clean flags, derived policy and an
+    approved sandbox spec.
+    """
     expected = 'dedc0178918e260823323b8d95005a8cb924b007'
     actual = subprocess.check_output(['git', '-C', str(ROOT/'vendor/opentelemetry-demo'), 'rev-parse', 'HEAD'], text=True).strip()
     problems = baseline_problems(FLAG_FILE)

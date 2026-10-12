@@ -22,12 +22,14 @@ SERVICE_LABEL = "com.docker.compose.service"
 
 
 def load_spec(path: Path = SPEC_PATH) -> dict:
+    """Load the sandbox spec YAML (path can be overridden with BOSCH_SANDBOX_SPEC)."""
     if path == SPEC_PATH and os.environ.get("BOSCH_SANDBOX_SPEC"):
         path = Path(os.environ["BOSCH_SANDBOX_SPEC"])
     return yaml.safe_load(path.read_text())
 
 
 def _docker(*args: str) -> str:
+    """Run a docker command and return its stdout."""
     return subprocess.run(["docker", *args], check=True, capture_output=True,
                           text=True, timeout=30).stdout
 
@@ -60,6 +62,9 @@ def collect_snapshot() -> dict:
 
 @dataclass
 class ScopeReport:
+    """Result of checking the live Docker environment against the sandbox spec: errors, warnings and
+    resolved targets.
+    """
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     targets: dict[str, str] = field(default_factory=dict)
@@ -67,6 +72,7 @@ class ScopeReport:
 
     @property
     def scope_ok(self) -> bool:
+        """True when no scope errors were found."""
         return not self.errors
 
     @property
@@ -75,11 +81,15 @@ class ScopeReport:
         return self.scope_ok and self.approved
 
     def as_dict(self) -> dict:
+        """The report as a JSON-friendly dict."""
         return {"scope_ok": self.scope_ok, "isolation_approved": self.isolation_approved,
                 "errors": self.errors, "warnings": self.warnings, "targets": self.targets}
 
 
 def _under(path: str, roots: list[Path]) -> bool:
+    """Whether a (bind-mount) path lies under one of the allowed roots, mapping Docker Desktop's
+    /host_mnt prefix on macOS.
+    """
     candidate = Path(path)
     # Docker Desktop exposes macOS bind paths through its Linux VM prefix.
     if sys.platform == "darwin" and path.startswith("/host_mnt/"):
@@ -91,6 +101,9 @@ def _under(path: str, roots: list[Path]) -> bool:
 
 
 def evaluate(snapshot: dict, spec: dict, repo_root: Path = ROOT) -> ScopeReport:
+    """Compare a Docker snapshot with the sandbox spec (context, daemon, project, containers,
+    networks, published ports, mounts) and report errors and warnings.
+    """
     report = ScopeReport()
     err, warn = report.errors.append, report.warnings.append
 
@@ -158,6 +171,9 @@ def resolve_target(report: ScopeReport, service: str) -> str:
 
 
 def main() -> int:
+    """Print the scope report for the current Docker environment; exit 0 only if isolation is
+    approved.
+    """
     report = evaluate(collect_snapshot(), load_spec())
     print(json.dumps(report.as_dict(), indent=2))
     return 0 if report.isolation_approved else 2

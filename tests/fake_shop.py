@@ -17,7 +17,11 @@ VALID_CARD = "4432-8015-6152-0454"
 
 
 class FakeShop:
+    """Minimal HTTP shop on a random loopback port: carts, checkout outcomes driven by test card
+    numbers, and Jaeger-style traces.
+    """
     def __init__(self):
+        """Start with empty carts and traces and build the request handler and server."""
         self.carts: dict[str, list] = {}
         self.traces: dict[str, dict] = {}
         self.drop_traces = False
@@ -29,10 +33,13 @@ class FakeShop:
         shop = self
 
         class Handler(BaseHTTPRequestHandler):
+            """Request handler for the fake shop and its Jaeger API."""
             def log_message(self, *args):
+                """Keep test output quiet."""
                 pass
 
             def _send(self, status, body=None, ctype="application/json"):
+                """Send a JSON (or raw) response."""
                 data = body if isinstance(body, bytes) else json.dumps(body).encode() if body is not None else b""
                 self.send_response(status)
                 self.send_header("Content-Type", ctype)
@@ -41,10 +48,12 @@ class FakeShop:
                 self.wfile.write(data)
 
             def _trace_id(self):
+                """Trace id from the traceparent header."""
                 parts = (self.headers.get("traceparent") or "").split("-")
                 return parts[1] if len(parts) == 4 else None
 
             def do_GET(self):
+                """Serve the home page, products, cart reads and stored traces."""
                 url = urlparse(self.path)
                 q = parse_qs(url.query)
                 if url.path == "/":
@@ -65,6 +74,7 @@ class FakeShop:
                 return self._send(404, {})
 
             def do_POST(self):
+                """Handle add-to-cart and checkout."""
                 url = urlparse(self.path)
                 body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
                 if url.path == "/api/cart":
@@ -75,6 +85,9 @@ class FakeShop:
                 return self._send(404, {})
 
             def _checkout(self, body):
+                """Simulate a checkout: decline, payment failure or success depending on the card,
+                and record its trace.
+                """
                 with shop.lock:
                     shop.checkouts += 1
                     n = shop.checkouts
@@ -98,10 +111,12 @@ class FakeShop:
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
 
     def record_trace(self, tid, payment_error=None, transaction_id=None, failed=False):
+        """Store a Jaeger-style trace for a checkout, with error spans and logs when payment failed."""
         if not tid:
             return
 
         def span(sid, pid, op, error=False, logs=()):
+            """Build one span with its tags and logs."""
             tags = [{"key": "otel.status_code", "value": "ERROR"}] if error else []
             if error and pid == "p3":
                 tags.append({"key": "rpc.grpc.status_code", "value": 2})
@@ -119,19 +134,24 @@ class FakeShop:
                                           "p3": {"serviceName": "payment"}}}
 
     def __enter__(self):
+        """Start serving in a background thread."""
         self.thread.start()
         return self
 
     def __exit__(self, *exc):
+        """Stop the server."""
         self.server.shutdown()
         self.server.server_close()
 
 
 class FakeRuntime:
+    """Fake container runtime for baseline tests."""
     def __init__(self, restarts_after: int = 0):
+        """Optionally report restarts after the first inventory call."""
         self.calls, self.restarts_after = 0, restarts_after
 
     def inventory(self):
+        """Healthy running containers (with restarts on later calls if configured)."""
         self.calls += 1
         restarts = self.restarts_after if self.calls > 1 else 0
         return {s: {"id": s[:12], "status": "running", "health": "healthy",
@@ -139,4 +159,5 @@ class FakeRuntime:
                 for s in ("frontend", "checkout", "payment")}
 
     def stats(self):
+        """Fixed resource stats for the payment container."""
         return {"payment": {"cpu_percent": 1.5, "mem_bytes": 50_000_000, "mem_limit_bytes": 120_000_000}}

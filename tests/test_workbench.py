@@ -11,6 +11,7 @@ FIXTURE=json.loads((ROOT/'tests/fixtures/workbench/demo.json').read_text())
 
 
 def test_fixture_records_validate_shared_contracts():
+    """The workbench fixture records validate against the shared contracts."""
     detail=FIXTURE['detail']
     Run.model_validate(detail['run'])
     for event in FIXTURE['events']: Event.model_validate(event)
@@ -23,17 +24,20 @@ def test_fixture_records_validate_shared_contracts():
 
 @pytest.mark.parametrize('path',['/runs','/runs/run-0001/abort','/patches/patch-candidate-01/approve','/patches/patch-candidate-01/deploy'])
 def test_fixture_mutations_always_refused(path):
+    """The fixture server refuses every mutating call."""
     status,body=route('POST','/api/workbench'+path,{})
     assert status==409 and body['error']=='FIXTURE_ONLY'
 
 
 def test_resume_events_exact_cursor():
+    """Event resume returns exactly the events after the cursor."""
     status,body=route('GET','/api/workbench/runs/run-0001/events?after_seq=4')
     assert status==200 and [e['seq'] for e in body['result']['events']]==[5,6,7]
     assert route('GET','/api/workbench/runs/run-0001/events?after_seq=-1')[0]==400
 
 
 def test_disabled_capability_and_untrusted_plan_input_refused():
+    """Disabled capabilities and untrusted plan fields are refused."""
     args={'capability_id':'payment-process-outage','duration_seconds':15,'expected_impact':'Test'}
     assert route('POST','/api/workbench/plans/validate',args)[0]==400
     args.update(capability_id='payment-unreachable',command='docker stop payment')
@@ -41,12 +45,14 @@ def test_disabled_capability_and_untrusted_plan_input_refused():
 
 
 def test_fixture_plan_is_typed_preview():
+    """A fixture plan validation returns a typed preview."""
     status,body=route('POST','/api/workbench/plans/validate',{'capability_id':'payment-unreachable',
         'duration_seconds':15,'expected_impact':'Checkout fails but cart stays healthy'})
     assert status==200 and body['result']['execution']=='preview'
 
 
 def test_cleanup_stale_and_provider_failure_fixtures():
+    """The cleanup-failed, stale and provider-failure fixture cases show the right states."""
     detail='/api/workbench/runs/run-0001'
     _,result=route('GET',detail,case='cleanup-failed')
     assert result['result']['run']['state']=='NEEDS_ATTENTION'

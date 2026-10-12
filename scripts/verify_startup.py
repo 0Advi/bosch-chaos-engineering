@@ -13,6 +13,7 @@ from demo import EXPECTED, PROJECT, REVISION, ROOT, compose, host_port
 
 
 def runtime_inventory():
+    """Inspect the running sandbox containers: names, images, state, health and published ports."""
     ids = subprocess.check_output(compose() + ["ps", "--all", "--quiet"],
                                   text=True, timeout=30).split()
     if not ids:
@@ -38,6 +39,7 @@ def runtime_inventory():
 
 
 def request(url, payload=None):
+    """Make one HTTP request and return a record (status, latency) and the parsed body."""
     data = json.dumps(payload).encode() if payload is not None else None
     start = time.monotonic()
     with urlopen(Request(url, data=data, headers={"Content-Type": "application/json"}), timeout=20) as response:
@@ -48,6 +50,9 @@ def request(url, payload=None):
 
 
 def main():
+    """Verify the sandbox started correctly (pages, APIs, cart, checkout, metrics, traces) and save
+    the evidence.
+    """
     evidence = {"experiment": None, "fault_executed": False,
                 "kind": "startup_verification", "started_at": datetime.now(timezone.utc).isoformat(),
                 "checks": [], "passed": False}
@@ -55,6 +60,7 @@ def main():
     metrics = f"http://127.0.0.1:{host_port('BOSCH_METRICS_PORT', 9090)}"
 
     def check(label, path, payload=None):
+        """Request one shop path, record it as a check and return its body."""
         record, body = request(app + path, payload)
         record["check"] = label
         evidence["checks"].append(record)

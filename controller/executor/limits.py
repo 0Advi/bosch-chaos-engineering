@@ -8,6 +8,7 @@ from ..schemas import PaymentPolicy
 
 @dataclass(frozen=True)
 class RunLimits:
+    """Every timeout, sample count, error rate and deadline a live run must respect."""
     policy_version: str
     checkout_timeout_s: float
     protected_timeout_s: float
@@ -25,6 +26,7 @@ class RunLimits:
 
     @classmethod
     def from_policies(cls, payment: PaymentPolicy, execution: dict) -> "RunLimits":
+        """Build the limits from the derived payment policy's gates and the execution policy."""
         g = {name: gate.value for name, gate in payment.gates.items()}
         return cls(
             policy_version=payment.policy_version,

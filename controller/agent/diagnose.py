@@ -54,10 +54,14 @@ EDGE_RE = re.compile(r"^[a-z-]+->[a-z-]+$")
 
 
 def prompt_text() -> str:
+    """The diagnosis system prompt (prompts/diagnosis_v1.md)."""
     return PROMPT_PATH.read_text()
 
 
 def prompt_version() -> str:
+    """A version id for the prompt plus output schema, so results record exactly which prompt
+    produced them.
+    """
     digest = hashlib.sha256((prompt_text() + json.dumps(OUTPUT_SCHEMA, sort_keys=True)).encode()).hexdigest()
     return f"diagnosis-v1-{digest[:8]}"
 
@@ -69,6 +73,9 @@ def recommends_retry(text: str) -> bool:
 
 
 def _has_idempotency_evidence(bundle: EvidenceBundle) -> bool:
+    """Whether trusted evidence shows payment retries are safe from double charging; always False in
+    this release (logs and model text cannot prove it).
+    """
     # Logs and model-supplied text cannot prove duplicate-charge safety.
     # No trusted ledger/idempotency verifier is implemented in this release.
     return False
@@ -121,6 +128,9 @@ def ground(run_id: str, proposal: dict, bundle: EvidenceBundle, diagnoser: str, 
 
 def diagnose_with_model(run_id: str, bundle: EvidenceBundle, provider: ModelProvider,
                         context: Optional[SourceContext] = None) -> DiagnosisResult:
+    """Diagnose a run with the model: check the bundle is blind, send the context and evidence, then
+    ground the proposal; provider failures become a recorded error result.
+    """
     assert_blind(bundle)
     context = context or build_context()
     version = prompt_version()
